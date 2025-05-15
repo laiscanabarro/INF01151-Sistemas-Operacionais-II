@@ -1,0 +1,7 @@
+# Ignorar arquivos executáveis 
+myClient
+obterTempoAtual
+testComunicationClient
+testComunicationServer
+testGetLocalNotification
+*.out
