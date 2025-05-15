@@ -13,13 +13,12 @@ async def http_handler(path, headers):
     from http import HTTPStatus
     from websockets.http import Headers
 
-    #base_dir = os.path.dirname(os.path.abspath(__file__))
+    base_dir = os.path.dirname(os.path.abspath(__file__))
 
     if path == '/ui-chat':
         # Entregar para o navegador o conteúdo do arquivo chat.html,
         # que corresponde ao cliente chat implementado pelo webservice
-        with open("chat.html") as f:
-        #with open(os.path.join(base_dir, "chat.html")) as f:
+        with open(os.path.join(base_dir, "chat.html")) as f:
             headers = Headers(**{'Content-Type': 'text/html'})
             body = bytes(f.read(), 'utf-8')
 
@@ -28,8 +27,7 @@ async def http_handler(path, headers):
     elif path == '/ui-echo':
         # Entregar para o navegador o conteúdo do arquivo echo.html,
         # que corresponde ao cliente echo implementado pelo webservice
-        with open("echo.html") as f:
-        #with open(os.path.join(base_dir, "echo.html")) as f:
+        with open(os.path.join(base_dir, "echo.html")) as f:
             headers = Headers(**{'Content-Type': 'text/html'})
             body = bytes(f.read(), 'utf-8')
 
