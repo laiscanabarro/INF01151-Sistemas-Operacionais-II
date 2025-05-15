@@ -11,4 +11,14 @@ message SumReply {
 
 service Calculator {
   rpc Sum (SumRequest) returns (SumReply);
+  rpc Multiply (MultiplyRequest) returns (MultiplyReply);
+}
+
+message MultiplyRequest {
+  double a = 1;
+  double b = 2;
+}
+
+message MultiplyReply {
+  double s = 1;
 }

@@ -55,3 +55,18 @@ def test_sum(calculator_client):
 
     # then
     assert result.s == expected
+
+def test_multiply(calculator_client):
+    from calculator_pb2 import MultiplyRequest
+
+    # given
+    a = 25.9
+    b = 10.4
+
+    expected = a * b
+
+    # when
+    result = calculator_client.Multiply(MultiplyRequest(a=a, b=b))
+
+    # then
+    assert result.s == expected
