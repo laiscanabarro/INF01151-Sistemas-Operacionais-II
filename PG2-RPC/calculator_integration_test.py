@@ -70,3 +70,20 @@ def test_multiply(calculator_client):
 
     # then
     assert result.s == expected
+
+def test_max(calculator_client):
+    from calculator_pb2 import MaxRequest
+
+    # given
+    a = 63.5
+    b = -12.4
+    c = 24
+
+    expected = max(a, b, c)
+
+    # when
+    result = calculator_client.Max(MaxRequest(a=a, b=b, c=c))
+
+    # then
+    assert result.s == expected
+    

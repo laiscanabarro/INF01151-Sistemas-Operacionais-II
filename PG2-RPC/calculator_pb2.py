@@ -24,7 +24,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x10\x63\x61lculator.proto\"\"\n\nSumRequest\x12\t\n\x01\x61\x18\x01 \x01(\x01\x12\t\n\x01\x62\x18\x02 \x01(\x01\"\x15\n\x08SumReply\x12\t\n\x01s\x18\x01 \x01(\x01\"\'\n\x0fMultiplyRequest\x12\t\n\x01\x61\x18\x01 \x01(\x01\x12\t\n\x01\x62\x18\x02 \x01(\x01\"\x1a\n\rMultiplyReply\x12\t\n\x01s\x18\x01 \x01(\x01\x32Y\n\nCalculator\x12\x1d\n\x03Sum\x12\x0b.SumRequest\x1a\t.SumReply\x12,\n\x08Multiply\x12\x10.MultiplyRequest\x1a\x0e.MultiplyReplyb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x10\x63\x61lculator.proto\"\"\n\nSumRequest\x12\t\n\x01\x61\x18\x01 \x01(\x01\x12\t\n\x01\x62\x18\x02 \x01(\x01\"\x15\n\x08SumReply\x12\t\n\x01s\x18\x01 \x01(\x01\"\'\n\x0fMultiplyRequest\x12\t\n\x01\x61\x18\x01 \x01(\x01\x12\t\n\x01\x62\x18\x02 \x01(\x01\"\x1a\n\rMultiplyReply\x12\t\n\x01s\x18\x01 \x01(\x01\"-\n\nMaxRequest\x12\t\n\x01\x61\x18\x01 \x01(\x01\x12\t\n\x01\x62\x18\x02 \x01(\x01\x12\t\n\x01\x63\x18\x03 \x01(\x01\"\x15\n\x08MaxReply\x12\t\n\x01s\x18\x01 \x01(\x01\x32x\n\nCalculator\x12\x1d\n\x03Sum\x12\x0b.SumRequest\x1a\t.SumReply\x12,\n\x08Multiply\x12\x10.MultiplyRequest\x1a\x0e.MultiplyReply\x12\x1d\n\x03Max\x12\x0b.MaxRequest\x1a\t.MaxReplyb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -39,6 +39,10 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['_MULTIPLYREQUEST']._serialized_end=118
   _globals['_MULTIPLYREPLY']._serialized_start=120
   _globals['_MULTIPLYREPLY']._serialized_end=146
-  _globals['_CALCULATOR']._serialized_start=148
-  _globals['_CALCULATOR']._serialized_end=237
+  _globals['_MAXREQUEST']._serialized_start=148
+  _globals['_MAXREQUEST']._serialized_end=193
+  _globals['_MAXREPLY']._serialized_start=195
+  _globals['_MAXREPLY']._serialized_end=216
+  _globals['_CALCULATOR']._serialized_start=218
+  _globals['_CALCULATOR']._serialized_end=338
 # @@protoc_insertion_point(module_scope)

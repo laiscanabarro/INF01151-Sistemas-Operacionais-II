@@ -12,6 +12,7 @@ message SumReply {
 service Calculator {
   rpc Sum (SumRequest) returns (SumReply);
   rpc Multiply (MultiplyRequest) returns (MultiplyReply);
+  rpc Max (MaxRequest) returns (MaxReply);
 }
 
 message MultiplyRequest {
@@ -20,5 +21,15 @@ message MultiplyRequest {
 }
 
 message MultiplyReply {
+  double s = 1;
+}
+
+message MaxRequest {
+  double a = 1;
+  double b = 2;
+  double c = 3;
+}
+
+message MaxReply {
   double s = 1;
 }
