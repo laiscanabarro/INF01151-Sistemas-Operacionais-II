@@ -5,11 +5,17 @@
 #include <arpa/inet.h>
 #include <time.h>
 #include "../comunication/comunicationClient.h"
+#include <dirent.h>   // Para manipulação de diretórios
+#include <sys/types.h> // Para tipos como DIR
+//#include "../controle/controle.h"
 #include <pthread.h>
 #define PORTA 8080
+#define IP "127.0.0.1"
 
-char diretorio[200];
+// Definição e inicialização do mutex (uma única vez)
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+char diretorio[200];
+
 int nTasks=0;
 struct pendingTask{
     notification_t notification;
@@ -188,15 +194,18 @@ void filterTasks(void) {
 void* minhaThread1(void* arg) {
     notification_t notifications[300];
     while (1) {
-        usleep(500000);  // Aguardar meio segundo (500 milissegundos)
-        int num_notifications = receiveLastSecondNotificationFromServer(notifications, PORTA, "192.168.15.12");
+        int min = 100000;
+        int max = 250000;
+        int aleatorio = min + rand() % (max - min + 1);
+        usleep(aleatorio);  // Aguardar meio segundo (500 milissegundos)
+        int num_notifications = receiveLastSecondNotificationFromServer(notifications, PORTA, IP);
         pthread_mutex_lock(&mutex);
         insertNewTasks(notifications, num_notifications, &pendingTasks, &nTasks);
         //filtra tarefas repetidas ou que se sobrepoem
-        /*
+        
         filterTasks();
         filterTasksAux();
-        filterTasks();*/
+        filterTasks();
         pthread_mutex_unlock(&mutex);
         // Imprimir todas as tarefas pendentes
         printf("\n== Lista de Tarefas Pendentes (%d tarefas) ==\n", nTasks);
@@ -240,9 +249,9 @@ void renameFile(char * nome_arquivo_novo,char * nome_arquivo_antigo){
 
 }
 void updateFile(char * nome_arquivo){
-    char caminho_completo[300];
+    char caminho_completo[500];
     snprintf(caminho_completo, sizeof(caminho_completo), "%s/%s", diretorio, nome_arquivo);
-    receiveNewFileFromServer(nome_arquivo,diretorio,PORTA,"192.168.15.12");
+    receiveNewFileFromServer(nome_arquivo,diretorio,PORTA,IP);
     pthread_mutex_lock(&mutex);
     removeTaskAt(0);
     pthread_mutex_unlock(&mutex);
@@ -318,12 +327,79 @@ void* minhaThread(void* arg) {
     
     return 0;
 }*/
+
+
+#include <dirent.h>   // Para manipulação de diretórios
+#include <sys/types.h> // Para tipos como DIR
+
+void iniciaDiretorioCliente() {
+    DIR *dir;
+    struct dirent *entry;
+
+    // 1. Limpar o diretório do cliente
+    dir = opendir(diretorio);
+    if (dir == NULL) {
+        perror("Erro ao abrir o diretório do cliente");
+        return;
+    }
+    
+    while ((entry = readdir(dir)) != NULL) {
+        // Ignorar "." e ".."
+        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
+            continue;
+        }
+
+        // Construir o caminho completo para o arquivo
+        char caminho_completo[500];
+        snprintf(caminho_completo, sizeof(caminho_completo), "%s/%s", diretorio, entry->d_name);
+
+        // Remover o arquivo
+        if (remove(caminho_completo) != 0) {
+            perror("Erro ao deletar arquivo");
+        }
+    }
+    closedir(dir);
+    
+    // 2. Obter os nomes dos arquivos que estão no servidor
+    char **arquivosServidor;
+    int num_arquivos = receiveFileListFromServer(&arquivosServidor, PORTA, IP);
+    
+    if (num_arquivos < 0) {
+        perror("Erro ao obter lista de arquivos do servidor");
+        return;
+    }
+
+    // 3. Inserir as tarefas no vetor pendingTasks (usando mutex)
+    pthread_mutex_lock(&mutex);
+   
+    notification_t *notificacoes = malloc(num_arquivos * sizeof(notification_t));
+    if (notificacoes == NULL) {
+        perror("Erro ao alocar memória para notificações");
+        pthread_mutex_unlock(&mutex);
+        return;
+    }
+    
+    for (int i = 0; i < num_arquivos; i++) {
+        strcpy(notificacoes[i].fileName, arquivosServidor[i]);
+        notificacoes[i].type = UPDATED_FILE;
+    }
+    
+    insertNewTasks(notificacoes, num_arquivos, &pendingTasks, &nTasks);
+
+    free(notificacoes);
+    pthread_mutex_unlock(&mutex);
+}
+
+
 int main() {
     
     printf("Digite o nome do diretorio do cleinte: \n");
-    fgets(diretorio,200,stdin);
     
+    fgets(diretorio,200,stdin);
+    //printf("passou");
     diretorio[strlen(diretorio)-1]='\0';
+    
+    iniciaDiretorioCliente();
     pthread_t thread1,thread2;  // Identificador da thread
     int id = 1;
 
@@ -341,6 +417,7 @@ int main() {
     // Aguarda a conclusão da thread
     pthread_join(thread1, NULL);
     printf("Thread principal: Thread finalizada!\n");
+    
 
     return 0;
 }

@@ -492,6 +492,108 @@ void filterNotifications(notification_t *notifications, int *num_notifications) 
 }
 
 
+int sendFileListToClient(int novo_socket, char *diretorio){
+    int nArquivos=0;
+    char **arquivos;
+    // Chamada da função para obter a lista de arquivos
+    obterListaArquivos(diretorio, &arquivos, &nArquivos);
+
+    // Verificar se a lista foi preenchida corretamente
+    if (arquivos == NULL) {
+        printf("Erro ao obter a lista de arquivos\n");
+        return -1;
+    }
+    if (send(novo_socket, &nArquivos, sizeof(int), 0) <= 0) {
+        perror("Erro ao enviar numero de arquivos");
+        close(novo_socket);
+        return 1;
+    }
+    for (int i = 0; i < nArquivos; i++)
+    {
+        int len = strlen(arquivos[i]) + 1; // +1 para incluir o '\0'
+
+        // Envia o tamanho do nome do arquivo
+        if (send(novo_socket, &len, sizeof(int), 0) <= 0)
+        {
+            perror("Erro ao enviar tamanho do arquivo");
+            close(novo_socket);
+            return 1;
+        }
+
+        // Envia o nome do arquivo
+        if (send(novo_socket, arquivos[i], len, 0) <= 0)
+        {
+            perror("Erro ao enviar nome do arquivo");
+            close(novo_socket);
+            return 1;
+        }
+    }
+    for (int i = 0; i < nArquivos; i++)
+    {
+        free(arquivos[i]);
+    }
+    free(arquivos);
+}
+void obterListaArquivos(char *diretorio, char ***arquivos, int *nArquivos) {
+    DIR *dir;
+    struct dirent *entry;
+    int capacidade = 100;  // Capacidade inicial
+
+    // Alocar memória para a lista de arquivos
+    *arquivos = malloc(capacidade * sizeof(char *));
+    if (*arquivos == NULL) {
+        perror("Erro ao alocar memória para a lista de arquivos");
+        return;
+    }
+
+    *nArquivos = 0;
+
+    // Abrir o diretório especificado
+    dir = opendir(diretorio);
+    if (dir == NULL) {
+        perror("Erro ao abrir o diretório");
+        free(*arquivos);
+        *arquivos = NULL;
+        return;
+    }
+
+    // Percorrer os arquivos no diretório
+    while ((entry = readdir(dir)) != NULL) {
+        // Ignorar "." e ".."
+        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
+            continue;
+        }
+
+        // Realocar memória se necessário
+        if (*nArquivos >= capacidade) {
+            capacidade *= 2;
+            char **temp = realloc(*arquivos, capacidade * sizeof(char *));
+            if (temp == NULL) {
+                perror("Erro ao realocar memória para a lista de arquivos");
+                closedir(dir);
+                free(*arquivos);
+                *arquivos = NULL;
+                return;
+            }
+            *arquivos = temp;
+        }
+
+        // Alocar memória para o nome do arquivo e armazenar
+        (*arquivos)[*nArquivos] = strdup(entry->d_name);
+        if ((*arquivos)[*nArquivos] == NULL) {
+            perror("Erro ao alocar memória para o nome do arquivo");
+            closedir(dir);
+            free(*arquivos);
+            *arquivos = NULL;
+            return;
+        }
+
+        (*nArquivos)++;
+    }
+    closedir(dir);
+}
+
+
 
 
 

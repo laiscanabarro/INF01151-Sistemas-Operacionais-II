@@ -110,6 +110,7 @@ int updateFileName(char *nomeNovo, char *nomeAntigo, char *diretorio, int PORTA,
 }
 
 int receiveNewFileFromServer(char *nomeArquivo, char *diretorio, int PORTA, char *IP) {
+    
     int sock;
     struct sockaddr_in endereco;
 
@@ -122,7 +123,7 @@ int receiveNewFileFromServer(char *nomeArquivo, char *diretorio, int PORTA, char
     connect(sock, (struct sockaddr *)&endereco, sizeof(endereco));
     int codigo = 4;
     send(sock, &codigo, sizeof(int), 0);
-
+    //sleep(15);
     // envia o nome do arquivo solicitado
     int tamanho_nome=strlen(nomeArquivo);
     send(sock, &tamanho_nome, sizeof(int), 0);
@@ -253,3 +254,50 @@ int  receiveLastSessionNotificationFromServer(notification_t *notification,int P
     return 0;
 
 }*/
+
+int receiveFileListFromServer(char ***arquivosServidor,int  PORTA,char * IP){
+    int sock;
+    struct sockaddr_in endereco;
+
+    // Conexão ao servidor
+    sock = socket(AF_INET, SOCK_STREAM, 0);
+    endereco.sin_family = AF_INET;
+    endereco.sin_port = htons(PORTA);
+    inet_pton(AF_INET, IP, &endereco.sin_addr);
+
+    // Conectando ao servidor
+    if (connect(sock, (struct sockaddr *)&endereco, sizeof(endereco)) < 0) {
+        perror("Erro ao conectar ao servidor");
+        close(sock);
+        return 0;
+    }
+
+    // Código da operação para notificações (por exemplo, 5)
+    int codigo = 6;
+    if (send(sock, &codigo, sizeof(int), 0) <= 0) {
+        perror("Erro ao enviar código para o servidor");
+        close(sock);
+        return 1;
+    }
+    int nArquivos=0;
+    if (recv(sock, &nArquivos, sizeof(int), 0) <= 0) {
+        perror("Erro ao enviar código para o servidor");
+        close(sock);
+        return 1;
+    }
+    (*arquivosServidor)=malloc(nArquivos*sizeof(char *));
+    int len;
+    for(int i=0;i<nArquivos;i++){
+        recv(sock, &len, sizeof(int), 0);
+        (*arquivosServidor)[i]=malloc(len*sizeof(char));
+        recv(sock,(*arquivosServidor)[i],len*sizeof(char),0);
+
+    }
+   
+    
+    return nArquivos;
+    
+
+
+
+}

@@ -23,6 +23,7 @@ int removeFileInServer(char *nomeArquivo,char *diretorio,int PORTA, char * IP);
 int updateFileName(char *novoNovo,char *nomeAntigo,char *diretorio,int PORTA, char * IP);
 int receiveNewFileFromServer(char *nomeArquivo, char *diretorio, int PORTA, char *IP);
 int receiveLastSecondNotificationFromServer(notification_t *notification, int PORTA, char *IP);
+int receiveFileListFromServer(char ***arquivosServidor,int  PORTA,char * IP);
 //int receiveLastSessionNotificationFromServer(notification_t *notification, int PORTA, char *IP);
 
 

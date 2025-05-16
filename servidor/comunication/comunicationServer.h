@@ -22,6 +22,8 @@ int sendNewFileToClient(int novo_socket, char *diretorio);
 int sendLastSecondNotificationToClient(int novo_socket,char *diretorio);
 //int sendLastSessionNotificationTocLient(int novo_socket,char *diretorio,time_t timeLastSession);
 int receiveLastSecondLocalNotification(notification_t *notification, char *diretorio);
+int sendFileListToClient(int novo_socket, char *diretorio);
+void obterListaArquivos(char *diretorio, char ***arquivos, int *nArquivos);
 //int receiveLastSessionLocalNotification(notification_t *notification, char *diretorio, time_t timeLastSession);
 void filterNotifications(notification_t *notifications, int *num_notifications);
 
