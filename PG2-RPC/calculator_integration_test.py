@@ -86,4 +86,20 @@ def test_max(calculator_client):
 
     # then
     assert result.s == expected
-    
+
+def test_div(calculator_client):
+    from calculator_pb2 import DivRequest
+
+    # given
+    a = 10
+    b = 3
+
+    expected_q = int(a / b)
+    expected_r = (a % b)
+
+    # when
+    result = calculator_client.Div(DivRequest(a=a, b=b))
+
+    # then
+    assert result.q == expected_q
+    assert result.r == expected_r  

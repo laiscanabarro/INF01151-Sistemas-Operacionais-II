@@ -13,6 +13,7 @@ service Calculator {
   rpc Sum (SumRequest) returns (SumReply);
   rpc Multiply (MultiplyRequest) returns (MultiplyReply);
   rpc Max (MaxRequest) returns (MaxReply);
+  rpc Div (DivRequest) returns (DivReply);
 }
 
 message MultiplyRequest {
@@ -32,4 +33,14 @@ message MaxRequest {
 
 message MaxReply {
   double s = 1;
+}
+
+message DivRequest {
+  double a = 1;
+  double b = 2;
+}
+
+message DivReply {
+  double q = 1;
+  double r = 2;
 }

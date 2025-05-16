@@ -49,6 +49,11 @@ class CalculatorStub(object):
                 request_serializer=calculator__pb2.MaxRequest.SerializeToString,
                 response_deserializer=calculator__pb2.MaxReply.FromString,
                 _registered_method=True)
+        self.Div = channel.unary_unary(
+                '/Calculator/Div',
+                request_serializer=calculator__pb2.DivRequest.SerializeToString,
+                response_deserializer=calculator__pb2.DivReply.FromString,
+                _registered_method=True)
 
 
 class CalculatorServicer(object):
@@ -72,6 +77,12 @@ class CalculatorServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def Div(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_CalculatorServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -89,6 +100,11 @@ def add_CalculatorServicer_to_server(servicer, server):
                     servicer.Max,
                     request_deserializer=calculator__pb2.MaxRequest.FromString,
                     response_serializer=calculator__pb2.MaxReply.SerializeToString,
+            ),
+            'Div': grpc.unary_unary_rpc_method_handler(
+                    servicer.Div,
+                    request_deserializer=calculator__pb2.DivRequest.FromString,
+                    response_serializer=calculator__pb2.DivReply.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -172,6 +188,33 @@ class Calculator(object):
             '/Calculator/Max',
             calculator__pb2.MaxRequest.SerializeToString,
             calculator__pb2.MaxReply.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def Div(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/Calculator/Div',
+            calculator__pb2.DivRequest.SerializeToString,
+            calculator__pb2.DivReply.FromString,
             options,
             channel_credentials,
             insecure,
