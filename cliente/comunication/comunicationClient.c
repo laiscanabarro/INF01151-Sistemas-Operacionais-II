@@ -176,7 +176,7 @@ int receiveLastSecondNotificationFromServer(notification_t *notification, int PO
     if (connect(sock, (struct sockaddr *)&endereco, sizeof(endereco)) < 0) {
         perror("Erro ao conectar ao servidor");
         close(sock);
-        return 1;
+        return 0;
     }
 
     // Código da operação para notificações (por exemplo, 5)

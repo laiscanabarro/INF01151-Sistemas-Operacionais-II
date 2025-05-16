@@ -4,9 +4,8 @@
 
 
 // Tipos de notificação para facilitar o uso e a comparação
-typedef enum {
-    NEW_FILE,          // Arquivo novo inserido
-    UPDATED_FILE,      // Arquivo atualizado
+typedef enum {       
+    UPDATED_FILE,      // Arquivo atualizado ou novo arquivo
     RENAMED_FILE,      // Arquivo renomeado
     REMOVED_FILE       // Arquivo removido
 } notification_type_t;
