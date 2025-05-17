@@ -4,6 +4,7 @@
 #include <unistd.h>
 #include <arpa/inet.h>
 #include "comunicationClient.h"
+
 int sendNewFileToServer(char *nomeArquivo,char *diretorio,int PORTA,char * IP){
     int sock;
     struct sockaddr_in endereco;
