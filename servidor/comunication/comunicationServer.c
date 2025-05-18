@@ -359,11 +359,27 @@ int receiveLastSecondLocalNotification(notification_t *notifications, char *dire
     time_t now = time(NULL);
     int notification_count = 0;
 
-    // Variáveis estáticas para armazenar o estado anterior
+    // Variáveis estáticas para armazenar o estado anterior e as notificações do último segundo
     static struct stat previous_stats[1024];
     static char previous_names[1024][200];
     static int previous_count = 0;
     static int initialized = 0;
+
+    // Cache das notificações do último segundo
+    static notification_t last_notifications[300];
+    static int last_notification_count = 0;
+    static time_t last_second = 0;
+
+    // Verificar se estamos no mesmo segundo da última chamada
+    if (now == last_second) {
+        // Retornar as notificações previamente calculadas
+        memcpy(notifications, last_notifications, last_notification_count * sizeof(notification_t));
+        return last_notification_count;
+    }
+
+    // Atualizar o segundo atual
+    last_second = now;
+    last_notification_count = 0;
 
     // Tabelas para marcar arquivos já encontrados na iteração atual
     int found_in_iteration[1024] = {0};
@@ -398,51 +414,41 @@ int receiveLastSecondLocalNotification(notification_t *notifications, char *dire
                 found_in_iteration[i] = 1;
 
                 // Verifica se o nome mudou (renomeação)
-                if (strcmp(previous_names[i], entry->d_name) != 0 && initialized) {
-                    strncpy(notifications[notification_count].fileName, entry->d_name, sizeof(notifications[notification_count].fileName));
-                    strncpy(notifications[notification_count].ancientFileName, previous_names[i], sizeof(notifications[notification_count].ancientFileName));
-                    notifications[notification_count].type = RENAMED_FILE;
-                    notification_count++;
+                if (strcmp(previous_names[i], entry->d_name) != 0) {
+                    strncpy(last_notifications[last_notification_count].fileName, entry->d_name, sizeof(last_notifications[last_notification_count].fileName));
+                    strncpy(last_notifications[last_notification_count].ancientFileName, previous_names[i], sizeof(last_notifications[last_notification_count].ancientFileName));
+                    last_notifications[last_notification_count].type = RENAMED_FILE;
+                    last_notification_count++;
 
-                    // Atualiza o nome armazenado para evitar duplicidade
+                    // Atualiza o nome armazenado para refletir a mudança
                     strncpy(previous_names[i], entry->d_name, sizeof(previous_names[i]));
                 }
 
-                // Verifica se foi atualizado recentemente e evita duplicidade
-                if (difftime(now, file_stat.st_mtime) <= 1 && initialized) {
-                    // Evita enviar a notificação de atualização duas vezes
-                    int already_notified = 0;
-                    for (int j = 0; j < notification_count; j++) {
-                        if (strcmp(notifications[j].fileName, entry->d_name) == 0 && notifications[j].type == UPDATED_FILE) {
-                            already_notified = 1;
-                            break;
-                        }
-                    }
-                    if (!already_notified) {
-                        strncpy(notifications[notification_count].fileName, entry->d_name, sizeof(notifications[notification_count].fileName));
-                        notifications[notification_count].type = UPDATED_FILE;
-                        notification_count++;
-                    }
+                // Verifica se foi atualizado recentemente
+                if (difftime(now, file_stat.st_mtime) <= 1) {
+                    strncpy(last_notifications[last_notification_count].fileName, entry->d_name, sizeof(last_notifications[last_notification_count].fileName));
+                    last_notifications[last_notification_count].type = UPDATED_FILE;
+                    last_notification_count++;
                 }
                 break;
             }
         }
 
         // Arquivo novo (não encontrado na lista anterior)
-        if (is_new && initialized) {
-            strncpy(notifications[notification_count].fileName, entry->d_name, sizeof(notifications[notification_count].fileName));
-            notifications[notification_count].type = UPDATED_FILE;
-            notification_count++;
+        if (is_new) {
+            strncpy(last_notifications[last_notification_count].fileName, entry->d_name, sizeof(last_notifications[last_notification_count].fileName));
+            last_notifications[last_notification_count].type = UPDATED_FILE;
+            last_notification_count++;
         }
     }
     closedir(dir);
 
     // Verificar arquivos que foram removidos desde a última chamada
     for (int i = 0; i < previous_count; i++) {
-        if (!found_in_iteration[i] && initialized) {
-            strncpy(notifications[notification_count].fileName, previous_names[i], sizeof(notifications[notification_count].fileName));
-            notifications[notification_count].type = REMOVED_FILE;
-            notification_count++;
+        if (!found_in_iteration[i]) {
+            strncpy(last_notifications[last_notification_count].fileName, previous_names[i], sizeof(last_notifications[last_notification_count].fileName));
+            last_notifications[last_notification_count].type = REMOVED_FILE;
+            last_notification_count++;
         }
     }
 
@@ -469,27 +475,31 @@ int receiveLastSecondLocalNotification(notification_t *notifications, char *dire
         return 0;
     }
 
-    filterNotifications(notifications,&notification_count);
-    return notification_count;
+    // Filtrar notificações duplicadas
+    filterNotifications(last_notifications, &last_notification_count);
+
+    // Copiar as notificações filtradas para a saída
+    memcpy(notifications, last_notifications, last_notification_count * sizeof(notification_t));
+    return last_notification_count;
 }
+
 void filterNotifications(notification_t *notifications, int *num_notifications) {
     for (int i = 0; i < *num_notifications; i++) {
-        // Se a notificação atual é de atualização (enum 0)
         if (notifications[i].type == UPDATED_FILE) {
             for (int j = i + 1; j < *num_notifications; j++) {
-                // Verifica se o nome do arquivo é o mesmo
                 if (strcmp(notifications[i].fileName, notifications[j].fileName) == 0) {
-                    // Remove a notificação duplicada (movendo os elementos restantes para trás)
                     for (int k = j; k < *num_notifications - 1; k++) {
                         notifications[k] = notifications[k + 1];
                     }
                     (*num_notifications)--;
-                    j--; // Ajusta o índice para continuar verificando
+                    j--; 
                 }
             }
         }
     }
 }
+
+
 
 
 int sendFileListToClient(int novo_socket, char *diretorio){

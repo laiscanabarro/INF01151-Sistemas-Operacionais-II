@@ -24,6 +24,8 @@ int updateFileName(char *novoNovo,char *nomeAntigo,char *diretorio,int PORTA, ch
 int receiveNewFileFromServer(char *nomeArquivo, char *diretorio, int PORTA, char *IP);
 int receiveLastSecondNotificationFromServer(notification_t *notification, int PORTA, char *IP);
 int receiveFileListFromServer(char ***arquivosServidor,int  PORTA,char * IP);
+void filterNotifications(notification_t *notifications, int *num_notifications);
+int receiveLastSecondLocalNotification(notification_t *notifications, char *diretorio);
 //int receiveLastSessionNotificationFromServer(notification_t *notification, int PORTA, char *IP);
 
 
