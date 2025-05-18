@@ -1,6 +1,6 @@
 #include <sys/stat.h>
 #include <time.h>
-
+int enviando=0;
 // Tipos de notificação para facilitar o uso e a comparação
 typedef enum {
     UPDATED_FILE,      // Arquivo atualizado
