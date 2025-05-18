@@ -376,6 +376,7 @@ void deleteFile(char *nome_arquivo) {
     
     if (remove(caminho_completo) != 0) {
         perror("Erro ao deletar arquivo");
+        return;
     }
     
     pthread_mutex_lock(&mutex3);
@@ -678,13 +679,34 @@ void upload_file(const char *path) {
         filename = path; 
     }
     
-    int result = sendNewFileToServer((char*)filename, client_info.sync_dir_path, client_info.server_port, client_info.server_ip);
-    
-    if (result == 0) {
-        printf("Arquivo %s enviado com sucesso.\n", filename);
-    } else {
-        printf("Erro ao enviar o arquivo %s.\n", filename);
+    char dest_path[MAX_PATH_SIZE];
+    int written = snprintf(dest_path, sizeof(dest_path), "%s/%s", client_info.sync_dir_path, filename);
+    if (written < 0 || written >= sizeof(dest_path)) {
+        fprintf(stderr, "Caminho muito longo: %s/%s\n", client_info.sync_dir_path, filename);
+        return;
     }
+    
+    FILE *src = fopen(path, "rb");
+    FILE *dest = fopen(dest_path, "wb");
+    
+    if (!src || !dest) {
+        if (src) fclose(src);
+        if (dest) fclose(dest);
+        perror("Erro ao copiar arquivo para diretório de sincronização");
+        return;
+    }
+    
+    char buffer[4096];
+    size_t bytes;
+    
+    while ((bytes = fread(buffer, 1, sizeof(buffer), src)) > 0) {
+        fwrite(buffer, 1, bytes, dest);
+    }
+    
+    fclose(src);
+    fclose(dest);
+    
+    printf("Arquivo %s copiado para o diretório de sincronização.\n", filename);
 }
 
 // Função para fazer download de um arquivo
@@ -723,8 +745,10 @@ void delete_file(const char *filename) {
         if (access(sync_path, F_OK) == 0) {
             if (remove(sync_path) == 0) {
                 printf("Arquivo %s removido do diretório sync_dir.\n", filename);
+                return;
             } else {
                 perror("Erro ao remover arquivo do diretório sync_dir");
+                return;
             }
         }
     } else {
@@ -769,6 +793,7 @@ void get_sync_dir() {
         // Remover o arquivo
         if (remove(caminho_completo) != 0) {
             perror("Erro ao deletar arquivo");
+            return;
         }
     }
     closedir(dir);
@@ -783,8 +808,6 @@ void get_sync_dir() {
     }
     
     // 3. Inserir as tarefas no vetor pendingTasks (usando mutex)
-    pthread_mutex_lock(&mutex);
-    
     notification_t *notificacoes = malloc(num_arquivos * sizeof(notification_t));
     if (notificacoes == NULL) {
         perror("Erro ao alocar memória para notificações");
@@ -801,8 +824,6 @@ void get_sync_dir() {
     
     insertNewTasks(notificacoes, num_arquivos, &pendingTasks, &nTasks);
     free(notificacoes);
-    
-    pthread_mutex_unlock(&mutex);
     
     printf("Diretório de sincronização pronto.\n");
 }
