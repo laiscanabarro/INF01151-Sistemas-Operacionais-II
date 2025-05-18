@@ -314,7 +314,7 @@ void updateFile(char *nome_arquivo) {
     insertTaskToEnd(&currentOrRecentTasksRecv, &nCurrentOrRecentTasksRecv, nome_arquivo, "", UPDATED_FILE, 1);
     pthread_mutex_unlock(&mutex3);
     
-    receiveNewFileFromServer(nome_arquivo, client_info.sync_dir_path, client_info.server_port, client_info.server_ip, client_info.username);
+    receiveNewFileFromServer(nome_arquivo, client_info.sync_dir_path, client_info.server_port, client_info.server_ip);
     
     pthread_mutex_lock(&mutex3);
     int j = getIndex(&currentOrRecentTasksRecv, &nCurrentOrRecentTasksRecv, nome_arquivo, "", UPDATED_FILE, 1);
@@ -403,7 +403,7 @@ void updateFileServer(char *nome_arquivo) {
     insertTaskToEnd(&currentOrRecentTasksSended, &nCurrentOrRecentTasksSended, nome_arquivo, "", UPDATED_FILE, 1);
     pthread_mutex_unlock(&mutexCurSen);
     
-    sendNewFileToServer(nome_arquivo, client_info.sync_dir_path, client_info.server_port, client_info.server_ip, client_info.username);
+    sendNewFileToServer(nome_arquivo, client_info.sync_dir_path, client_info.server_port, client_info.server_ip);
     
     pthread_mutex_lock(&mutexCurSen);
     int j = getIndex(&currentOrRecentTasksSended, &nCurrentOrRecentTasksSended, nome_arquivo, "", UPDATED_FILE, 1);
@@ -422,7 +422,7 @@ void removeFileServer(char *nome_arquivo) {
     insertTaskToEnd(&currentOrRecentTasksSended, &nCurrentOrRecentTasksSended, nome_arquivo, "", REMOVED_FILE, 1);
     pthread_mutex_unlock(&mutexCurSen);
     
-    removeFileInServer(nome_arquivo, client_info.sync_dir_path, client_info.server_port, client_info.server_ip, client_info.username);
+    removeFileInServer(nome_arquivo, client_info.sync_dir_path, client_info.server_port, client_info.server_ip);
     
     pthread_mutex_lock(&mutexCurSen);
     int j = getIndex(&currentOrRecentTasksSended, &nCurrentOrRecentTasksSended, nome_arquivo, "", REMOVED_FILE, 1);
@@ -441,7 +441,7 @@ void renameFileServer(char *nome_arquivo_novo, char *nome_arquivo_antigo) {
     insertTaskToEnd(&currentOrRecentTasksSended, &nCurrentOrRecentTasksSended, nome_arquivo_novo, nome_arquivo_antigo, RENAMED_FILE, 1);
     pthread_mutex_unlock(&mutexCurSen);
     
-    updateFileName(nome_arquivo_novo, nome_arquivo_antigo, client_info.sync_dir_path, client_info.server_port, client_info.server_ip, client_info.username);
+    updateFileName(nome_arquivo_novo, nome_arquivo_antigo, client_info.sync_dir_path, client_info.server_port, client_info.server_ip);
     
     pthread_mutex_lock(&mutexCurSen);
     int j = getIndex(&currentOrRecentTasksSended, &nCurrentOrRecentTasksSended, nome_arquivo_novo, nome_arquivo_antigo, RENAMED_FILE, 1);
@@ -468,11 +468,7 @@ void* sync_receive_thread(void* arg) {
         pthread_mutex_lock(&mutex5);
         pthread_mutex_lock(&mutex);
         
-        int num_notifications = receiveLastSecondNotificationFromServer(
-            notifications, 
-            client_info.server_port, 
-            client_info.server_ip,
-            client_info.username);
+        int num_notifications = receiveLastSecondNotificationFromServer(notifications, client_info.server_port, client_info.server_ip);
         
         insertNewTasks(notifications, num_notifications, &pendingTasks, &nTasks);
         
@@ -532,7 +528,7 @@ void* local_monitor_thread(void* arg) {
         usleep(500000);
         
         notification_t notifications[300];
-        int num_notifications = receiveLastSecondLocalNotification(notifications, client_info.sync_dir_path, client_info.username);
+        int num_notifications = receiveLastSecondLocalNotification(notifications, client_info.sync_dir_path);
         
         pthread_mutex_lock(&mutexTasksToServer);
         
@@ -648,7 +644,7 @@ void list_server_files() {
     printf("\n--- Solicitando lista de arquivos do servidor ---\n");
     
     char **arquivos_servidor = NULL;
-    int num_arquivos = receiveFileListFromServer(&arquivos_servidor, client_info.server_port, client_info.server_ip, client_info.username);
+    int num_arquivos = receiveFileListFromServer(&arquivos_servidor, client_info.server_port, client_info.server_ip);
     
     if (num_arquivos > 0) {
         printf("Arquivos no servidor (%d):\n", num_arquivos);
@@ -682,7 +678,7 @@ void upload_file(const char *path) {
         filename = path; 
     }
     
-    int result = sendNewFileToServer((char*)filename, client_info.sync_dir_path, client_info.server_port, client_info.server_ip, client_info.username);
+    int result = sendNewFileToServer((char*)filename, client_info.sync_dir_path, client_info.server_port, client_info.server_ip);
     
     if (result == 0) {
         printf("Arquivo %s enviado com sucesso.\n", filename);
@@ -701,7 +697,7 @@ void download_file(const char *filename) {
         return;
     }
     
-    int result = receiveNewFileFromServer((char*)filename, client_info.sync_dir_path, client_info.server_port, client_info.server_ip, client_info.username);
+    int result = receiveNewFileFromServer((char*)filename, client_info.sync_dir_path, client_info.server_port, client_info.server_ip);
     
     if (result == 0) {
         printf("Arquivo %s baixado com sucesso.\n", filename);
@@ -714,7 +710,7 @@ void download_file(const char *filename) {
 void delete_file(const char *filename) {
     printf("Solicitando exclusão do arquivo: %s\n", filename);
     
-    if (removeFileInServer((char *)filename, client_info.sync_dir_path, client_info.server_port, client_info.server_ip, client_info.username) == 0) {
+    if (removeFileInServer((char *)filename, client_info.sync_dir_path, client_info.server_port, client_info.server_ip) == 0) {
         printf("Arquivo %s excluído com sucesso no servidor.\n", filename);
         
         char sync_path[MAX_PATH_SIZE];
@@ -779,7 +775,7 @@ void get_sync_dir() {
     
     // 2. Obter os nomes dos arquivos que estão no servidor
     char **arquivosServidor;
-    int num_arquivos = receiveFileListFromServer(&arquivosServidor, client_info.server_port, client_info.server_ip, client_info.username);
+    int num_arquivos = receiveFileListFromServer(&arquivosServidor, client_info.server_port, client_info.server_ip);
     
     if (num_arquivos < 0) {
         perror("Erro ao obter lista de arquivos do servidor");

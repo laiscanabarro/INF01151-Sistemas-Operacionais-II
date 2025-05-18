@@ -6,7 +6,7 @@
 #include <arpa/inet.h>
 #include "comunicationClient.h"
 
-int sendNewFileToServer(char *nomeArquivo,char *diretorio,int PORTA,char * IP, char *username){
+int sendNewFileToServer(char *nomeArquivo,char *diretorio,int PORTA,char * IP){
     int sock;
     struct sockaddr_in endereco;
     // Conexão ao servidor
@@ -28,10 +28,6 @@ int sendNewFileToServer(char *nomeArquivo,char *diretorio,int PORTA,char * IP, c
         perror("Erro ao abrir arquivo");
         return 1;
     }
-    // Enviar o username
-    int username_size = strlen(username);
-    send(sock, &username_size, sizeof(int), 0);
-    send(sock, username, username_size, 0);
     // Envia o nome do arquivo
     int tamanho_nome = strlen(nomeArquivo);
     send(sock, &tamanho_nome, sizeof(int), 0);
@@ -55,7 +51,7 @@ int sendNewFileToServer(char *nomeArquivo,char *diretorio,int PORTA,char * IP, c
     return 0;
 }
 
-int removeFileInServer(char *nomeArquivo,char *diretorio,int PORTA,char * IP, char *username){
+int removeFileInServer(char *nomeArquivo,char *diretorio,int PORTA,char * IP){
     int sock;
     struct sockaddr_in endereco;
     // Conexão ao servidor
@@ -72,10 +68,6 @@ int removeFileInServer(char *nomeArquivo,char *diretorio,int PORTA,char * IP, ch
     send(sock,&codigo,sizeof(int),0);
    // printf("Conectado ao servidor!\n");
 
-   // Enviar o username
-    int username_size = strlen(username);
-    send(sock, &username_size, sizeof(int), 0);
-    send(sock, username, username_size, 0);
     // Envia o nome do arquivo
     int tamanho_nome = strlen(nomeArquivo);
     send(sock, &tamanho_nome, sizeof(int), 0);
@@ -85,7 +77,7 @@ int removeFileInServer(char *nomeArquivo,char *diretorio,int PORTA,char * IP, ch
     return 0;
 }
 
-int updateFileName(char *nomeNovo, char *nomeAntigo, char *diretorio, int PORTA, char *IP, char *username) {
+int updateFileName(char *nomeNovo, char *nomeAntigo, char *diretorio, int PORTA, char *IP) {
     int sock;
     struct sockaddr_in endereco;
 
@@ -99,11 +91,6 @@ int updateFileName(char *nomeNovo, char *nomeAntigo, char *diretorio, int PORTA,
     int codigo = 3;  // Novo código para "renomear arquivo"
     send(sock, &codigo, sizeof(int), 0);
    // printf("Conectado ao servidor!\n");
-
-   // Enviar o username
-    int username_size = strlen(username);
-    send(sock, &username_size, sizeof(int), 0);
-    send(sock, username, username_size, 0);
 
     // Envia o nome antigo do arquivo
     int tamanho_nome = strlen(nomeAntigo);
@@ -119,7 +106,7 @@ int updateFileName(char *nomeNovo, char *nomeAntigo, char *diretorio, int PORTA,
     return 0;
 }
 
-int receiveNewFileFromServer(char *nomeArquivo, char *diretorio, int PORTA, char *IP, char *username) {
+int receiveNewFileFromServer(char *nomeArquivo, char *diretorio, int PORTA, char *IP) {
     
     int sock;
     struct sockaddr_in endereco;
@@ -134,11 +121,6 @@ int receiveNewFileFromServer(char *nomeArquivo, char *diretorio, int PORTA, char
     int codigo = 4;
     send(sock, &codigo, sizeof(int), 0);
     //sleep(15);
-
-    // Enviar o username
-    int username_size = strlen(username);
-    send(sock, &username_size, sizeof(int), 0);
-    send(sock, username, username_size, 0);
 
     // envia o nome do arquivo solicitado
     int tamanho_nome=strlen(nomeArquivo);
@@ -176,7 +158,7 @@ int receiveNewFileFromServer(char *nomeArquivo, char *diretorio, int PORTA, char
     return 0;  
 }
 
-int receiveLastSecondNotificationFromServer(notification_t *notification, int PORTA, char *IP, char *username) {
+int receiveLastSecondNotificationFromServer(notification_t *notification, int PORTA, char *IP) {
     int sock;
     struct sockaddr_in endereco;
 
@@ -200,11 +182,6 @@ int receiveLastSecondNotificationFromServer(notification_t *notification, int PO
         close(sock);
         return 1;
     }
-
-    // Enviar o username
-    int username_size = strlen(username);
-    send(sock, &username_size, sizeof(int), 0);
-    send(sock, username, username_size, 0);
 
     // Receber o número de notificações
     int num_notifications;
@@ -273,7 +250,7 @@ int  receiveLastSessionNotificationFromServer(notification_t *notification,int P
 
 }*/
 
-int receiveFileListFromServer(char ***arquivosServidor,int  PORTA,char * IP, char *username){
+int receiveFileListFromServer(char ***arquivosServidor,int  PORTA,char * IP){
     int sock;
     struct sockaddr_in endereco;
 
@@ -298,11 +275,6 @@ int receiveFileListFromServer(char ***arquivosServidor,int  PORTA,char * IP, cha
         return 1;
     }
 
-    // Enviar o username
-    int username_size = strlen(username);
-    send(sock, &username_size, sizeof(int), 0);
-    send(sock, username, username_size, 0);
-
     int nArquivos=0;
     if (recv(sock, &nArquivos, sizeof(int), 0) <= 0) {
         perror("Erro ao enviar código para o servidor");
@@ -321,17 +293,7 @@ int receiveFileListFromServer(char ***arquivosServidor,int  PORTA,char * IP, cha
     return nArquivos;
 }
 
-int receiveLastSecondLocalNotification(notification_t *notifications, char *diretorio, char *username) {
-    // Construir o caminho do diretório específico do usuário, se necessário
-    char user_dir[1024];
-    if (strstr(diretorio, username) == NULL) {
-        // Se o diretório ainda não contém o username, adicione-o
-        snprintf(user_dir, sizeof(user_dir), "%s/%s", diretorio, username);
-    } else {
-        // Se já contém, use o diretório como está
-        strncpy(user_dir, diretorio, sizeof(user_dir));
-    }
-
+int receiveLastSecondLocalNotification(notification_t *notifications, char *diretorio) {
     DIR *dir;
     struct dirent *entry;
     struct stat file_stat;
