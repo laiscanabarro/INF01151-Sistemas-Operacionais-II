@@ -254,7 +254,7 @@ void* minhaThread1(void* arg) {
     while (1) {
         
         usleep(300000);  // Aguardar meio segundo (500 milissegundos)
-         pthread_mutex_lock(&mutex5);
+        
           pthread_mutex_lock(&mutex);
         int num_notifications = receiveLastSecondNotificationFromServer(notifications, PORTA, IP);
          
@@ -272,7 +272,7 @@ void* minhaThread1(void* arg) {
         filterTasksAux(pendingTasks, &nTasks);
         filterTasks(pendingTasks, &nTasks);
         pthread_mutex_unlock(&mutex);
-        pthread_mutex_unlock(&mutex5);
+        
         
         // Imprimir todas as tarefas pendentes
         
@@ -312,6 +312,7 @@ void deleteFile(char * nome_arquivo){
     pthread_mutex_lock(&mutex3);
     int j=getIndex(&currentOrRecentTasksRecv, &nCurrentOrRecentTasksRecv, nome_arquivo, "", REMOVED_FILE, 1);
     currentOrRecentTasksRecv[j].executing=0;
+    currentOrRecentTasksRecv[j].time=time(NULL);
     pthread_mutex_unlock(&mutex3);
 
     pthread_mutex_lock(&mutex);
@@ -333,6 +334,7 @@ void renameFile(char * nome_arquivo_novo,char * nome_arquivo_antigo){
     pthread_mutex_lock(&mutex3);
     int j=getIndex(&currentOrRecentTasksRecv, &nCurrentOrRecentTasksRecv, nome_arquivo_novo, nome_arquivo_antigo, RENAMED_FILE, 1);
     currentOrRecentTasksRecv[j].executing=0;
+    currentOrRecentTasksRecv[j].time=time(NULL);
     pthread_mutex_unlock(&mutex3);
 
     pthread_mutex_lock(&mutex);
@@ -352,7 +354,7 @@ void updateFile(char * nome_arquivo){
     pthread_mutex_lock(&mutex3);
     int j=getIndex(&currentOrRecentTasksRecv, &nCurrentOrRecentTasksRecv, nome_arquivo, "", UPDATED_FILE, 1);
     currentOrRecentTasksRecv[j].executing=0;
-   
+    currentOrRecentTasksRecv[j].time=time(NULL);
     pthread_mutex_unlock(&mutex3);
     
     pthread_mutex_lock(&mutex);
@@ -371,14 +373,14 @@ void* minhaThread2(void* arg) {
        
         usleep(100000);
         
-        pthread_mutex_lock(&mutex5);
+        pthread_mutex_lock(&mutex);
         
         
         if(nTasks!=0&&getIndex(&currentOrRecentTasksRecv, &nCurrentOrRecentTasksRecv, pendingTasks[0].notification.fileName, pendingTasks[0].notification.ancientFileName,
         pendingTasks[0].notification.type, 0)==-1){
           
             struct Task task= pendingTasks[0];
-            
+            pthread_mutex_unlock(&mutex);
         switch (task.notification.type)
         {
         case 0:
@@ -401,7 +403,10 @@ void* minhaThread2(void* arg) {
 
 
         }
-        pthread_mutex_unlock(&mutex5);
+        else{
+            pthread_mutex_unlock(&mutex);
+        }
+        
         
 
 
@@ -512,6 +517,7 @@ void updateFileServer(char * nome_arquivo){
     pthread_mutex_lock(& mutexCurSen);
     int j=getIndex(&currentOrRecentTasksSended, &nCurrentOrRecentTasksSended, nome_arquivo, "", UPDATED_FILE, 1);
     currentOrRecentTasksSended[j].executing=0;
+    currentOrRecentTasksSended[j].time=time(NULL);
    
     pthread_mutex_unlock(& mutexCurSen);
     
@@ -534,7 +540,7 @@ void removeFileServer(char * nome_arquivo){
     pthread_mutex_lock(& mutexCurSen);
     int j=getIndex(&currentOrRecentTasksSended, &nCurrentOrRecentTasksSended, nome_arquivo, "", REMOVED_FILE, 1);
     currentOrRecentTasksSended[j].executing=0;
-   
+    currentOrRecentTasksSended[j].time=time(NULL);
     pthread_mutex_unlock(& mutexCurSen);
     
     pthread_mutex_lock(&mutexTasksToServer);
@@ -556,6 +562,7 @@ void renameFileServer(char * nome_arquivo_novo,char * nome_arquivo_antigo){
     pthread_mutex_lock(& mutexCurSen);
     int j=getIndex(&currentOrRecentTasksSended, &nCurrentOrRecentTasksSended, nome_arquivo_novo, nome_arquivo_antigo, RENAMED_FILE, 1);
     currentOrRecentTasksSended[j].executing=0;
+    currentOrRecentTasksSended[j].time=time(NULL);
     pthread_mutex_unlock(& mutexCurSen);
     
     pthread_mutex_lock(&mutexTasksToServer);
@@ -572,7 +579,7 @@ void* minhaThread5(void* arg) {
         
        
         usleep(100000);
-        
+        pthread_mutex_lock(&mutexTasksToServer);
         
         
         
@@ -580,7 +587,7 @@ void* minhaThread5(void* arg) {
         pendingTasksToServer[0].notification.type, 0)==-1){
           
             struct Task task= pendingTasksToServer[0];
-            
+            pthread_mutex_unlock(&mutexTasksToServer);
         switch (task.notification.type)
         {
         case 0:
@@ -603,6 +610,7 @@ void* minhaThread5(void* arg) {
 
 
         }
+        pthread_mutex_unlock(&mutexTasksToServer);
         
         
 
