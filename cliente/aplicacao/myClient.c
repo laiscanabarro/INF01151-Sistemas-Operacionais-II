@@ -50,15 +50,22 @@ struct Task *currentOrRecentTasksRecv;
 struct Task *currentOrRecentTasksSended; 
 
 // Função para verificar se o diretório existe, se não, criar
+
 int check_and_create_directory(const char *path) {
-    struct stat st = {0};
-    if (stat(path, &st) == -1) {
-        if (mkdir(path, 0755) == -1) {
+    DIR *dir = opendir(path);
+    if (dir) {
+        closedir(dir);
+        printf("Diretório %s já existe.\n", path);
+        return 0;
+    } else {
+        if (mkdir(path, 0755) == 0) {
+            printf("Diretório %s criado com sucesso.\n", path);
+            return 0;
+        } else {
             perror("Erro ao criar diretório");
-            return -1;
+            return 1;
         }
     }
-    return 0;
 }
 
 // Função para verificar/criar o diretório do cliente
@@ -754,37 +761,7 @@ void get_sync_dir() {
         return;
     }
     
-    // 1. Limpar o diretório do cliente
-    DIR *dir;
-    struct dirent *entry;
-    dir = opendir(client_info.sync_dir_path);
-    if (dir == NULL) {
-        perror("Erro ao abrir o diretório de sincronização");
-        return;
-    }
-    
-    while ((entry = readdir(dir)) != NULL) {
-        // Ignorar "." e ".."
-        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
-            continue;
-        }
-
-        // Construir o caminho completo para o arquivo
-        char caminho_completo[MAX_PATH_SIZE];
-        int written = snprintf(caminho_completo, sizeof(caminho_completo), "%s/%s", client_info.sync_dir_path, entry->d_name);
-        if (written < 0 || written >= sizeof(caminho_completo)) {
-            fprintf(stderr, "Caminho muito longo: %s/%s\n", client_info.sync_dir_path, entry->d_name);
-            continue;
-        }
-
-        // Remover o arquivo
-        if (remove(caminho_completo) != 0) {
-            perror("Erro ao deletar arquivo");
-        }
-    }
-    closedir(dir);
-    
-    // 2. Obter os nomes dos arquivos que estão no servidor
+    // Obter os nomes dos arquivos que estão no servidor
     char **arquivosServidor;
     int num_arquivos = receiveFileListFromServer(&arquivosServidor, client_info.server_port, client_info.server_ip);
     
@@ -793,7 +770,7 @@ void get_sync_dir() {
         return;
     }
     
-    // 3. Inserir as tarefas no vetor pendingTasks (usando mutex)
+    // Inserir as tarefas no vetor pendingTasks (usando mutex)
     notification_t *notificacoes = malloc(num_arquivos * sizeof(notification_t));
     if (notificacoes == NULL) {
         perror("Erro ao alocar memória para notificações");
