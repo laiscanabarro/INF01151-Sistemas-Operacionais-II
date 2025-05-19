@@ -51,20 +51,14 @@ struct Task *currentOrRecentTasksSended;
 
 // Função para verificar se o diretório existe, se não, criar
 int check_and_create_directory(const char *path) {
-    DIR *dir = opendir(path);
-    if (dir) {
-        closedir(dir);
-        printf("Diretório %s já existe.\n", path);
-        return 0;
-    } else {
-        if (mkdir(path, 0755) == 0) {
-            printf("Diretório %s criado com sucesso.\n", path);
-            return 0;
-        } else {
+    struct stat st = {0};
+    if (stat(path, &st) == -1) {
+        if (mkdir(path, 0755) == -1) {
             perror("Erro ao criar diretório");
-            return 1;
+            return -1;
         }
     }
+    return 0;
 }
 
 // Função para verificar/criar o diretório do cliente
@@ -732,42 +726,35 @@ void download_file(const char *filename) {
 void delete_file(const char *filename) {
     printf("Solicitando exclusão do arquivo: %s\n", filename);
     
-    if (removeFileInServer((char *)filename, client_info.sync_dir_path, client_info.server_port, client_info.server_ip) == 0) {
-        printf("Arquivo %s excluído com sucesso no servidor.\n", filename);
-        
-        char sync_path[MAX_PATH_SIZE];
-        int written = snprintf(sync_path, MAX_PATH_SIZE, "%s/%s", client_info.sync_dir_path, filename);
-        if (written < 0 || written >= MAX_PATH_SIZE) {
-            fprintf(stderr, "Caminho muito longo, arquivo não removido localmente: %s/%s\n", client_info.sync_dir_path, filename);
-            return;
-        }
-        
-        if (access(sync_path, F_OK) == 0) {
-            if (remove(sync_path) == 0) {
-                printf("Arquivo %s removido do diretório sync_dir.\n", filename);
-                return;
-            } else {
-                perror("Erro ao remover arquivo do diretório sync_dir");
-                return;
-            }
+    char sync_path[MAX_PATH_SIZE];
+    int written = snprintf(sync_path, MAX_PATH_SIZE, "%s/%s", client_info.sync_dir_path, filename);
+    if (written < 0 || written >= MAX_PATH_SIZE) {
+        fprintf(stderr, "Caminho muito longo, arquivo não removido localmente: %s/%s\n", client_info.sync_dir_path, filename);
+        return;
+    }
+    
+    if (access(sync_path, F_OK) == 0) {
+        if (remove(sync_path) == 0) {
+            printf("Arquivo %s removido do diretório sync_dir.\n", filename);
+        } else {
+            perror("Erro ao remover arquivo do diretório sync_dir");
         }
     } else {
-        printf("Erro ao excluir o arquivo %s no servidor.\n", filename);
+        printf("Arquivo %s não encontrado localmente.\n", filename);
     }
 }
 
 // Função para iniciar a sincronização
 void get_sync_dir() {
-    printf("Iniciando sincronização do diretório...\n");
+    printf("Iniciando sincronização do diretório...\n");       
     
     // Verifica se o diretório existe
-    if (check_and_create_directory(client_info.sync_dir_path) == 0) {
-        printf("Diretório de sincronização pronto.\n");
-    } else {
+    if (check_and_create_directory(client_info.sync_dir_path) != 0) {
         printf("Erro ao preparar diretório de sincronização.\n");
+        return;
     }
     
-    // Limpa o diretório local
+    // 1. Limpar o diretório do cliente
     DIR *dir;
     struct dirent *entry;
     dir = opendir(client_info.sync_dir_path);
@@ -783,7 +770,7 @@ void get_sync_dir() {
         }
 
         // Construir o caminho completo para o arquivo
-        char caminho_completo[500];
+        char caminho_completo[MAX_PATH_SIZE];
         int written = snprintf(caminho_completo, sizeof(caminho_completo), "%s/%s", client_info.sync_dir_path, entry->d_name);
         if (written < 0 || written >= sizeof(caminho_completo)) {
             fprintf(stderr, "Caminho muito longo: %s/%s\n", client_info.sync_dir_path, entry->d_name);
@@ -793,7 +780,6 @@ void get_sync_dir() {
         // Remover o arquivo
         if (remove(caminho_completo) != 0) {
             perror("Erro ao deletar arquivo");
-            return;
         }
     }
     closedir(dir);
