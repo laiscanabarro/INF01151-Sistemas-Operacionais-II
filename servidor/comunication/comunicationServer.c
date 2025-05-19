@@ -4,8 +4,63 @@
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <dirent.h>
+#include <time.h>
+#include <pthread.h>
 #include "comunicationServer.h"
-int receiveNewFileFromClient(int novo_socket,char *diretorio){
+
+int nOperations = 0;
+operation_t actualOperations[100];
+//verifica se o arquivo esta atualmente numa operacao cliente/servidor (envio de arquivos,etc) conflitante com a operacao desejada
+int isFileInClientServerConflitOperation(char *file_name, notification_type_t type, operation_destiny_t destiny) {
+    for (int i = 0; i < nOperations; i++) {
+        if (strcmp(actualOperations[i].notification.fileName, file_name) == 0 &&
+            actualOperations[i].notification.type == UPDATED_FILE &&
+            (actualOperations[i].destiny == SERVER || destiny != CLIENT)) 
+        {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+int getIndex(char *file_name, notification_type_t type, operation_destiny_t destiny, int sock) {
+    for (int i = 0; i < nOperations; i++) {
+        if (strcmp(actualOperations[i].notification.fileName, file_name) == 0 &&
+            actualOperations[i].notification.type == type &&
+            actualOperations[i].destiny == destiny &&
+            actualOperations[i].serverSock == sock) 
+        {
+            return i;
+        }
+    }
+    return -1;
+}
+
+int insertOperation(char *file_name, notification_type_t type, operation_destiny_t destiny, int sock) {
+    if (nOperations < 300) {
+        strncpy(actualOperations[nOperations].notification.fileName, file_name, sizeof(actualOperations[nOperations].notification.fileName));
+        actualOperations[nOperations].notification.type = type;
+        actualOperations[nOperations].destiny = destiny;
+        actualOperations[nOperations].serverSock = sock;        
+        nOperations++;
+        return nOperations - 1;
+    }
+    return -1;
+}
+
+int removeOperation(char *file_name, notification_type_t type, operation_destiny_t destiny, int sock) {
+    int ind = getIndex(file_name, type, destiny, sock);
+    if (ind == -1) {
+        return -1;  // Operação não encontrada
+    }
+    for (int i = ind + 1; i < nOperations; i++) {
+        actualOperations[i - 1] = actualOperations[i];
+    }
+    nOperations--;
+    return 0;  // Sucesso
+}
+
+int receiveNewFileFromClient(int novo_socket,char *diretorio,pthread_mutex_t *conflitOperations){
     
     int tamanho_nome;
     char nome_arquivo[1024];
@@ -20,6 +75,19 @@ int receiveNewFileFromClient(int novo_socket,char *diretorio){
     if (strcmp(nome_arquivo, "0") == 0) {
         printf("Conexão encerrada pelo cliente.\n");
         return 1;
+    }
+  
+    int wait=1;
+    while(wait){
+        usleep(100000);
+        pthread_mutex_lock(conflitOperations);
+        if(!isFileInClientServerConflitOperation(nome_arquivo,UPDATED_FILE,SERVER)){
+            wait=0;
+           insertOperation(nome_arquivo,UPDATED_FILE,SERVER,novo_socket);
+
+         }
+        pthread_mutex_unlock(conflitOperations);
+
     }
     
     // Caminho completo
@@ -41,7 +109,9 @@ int receiveNewFileFromClient(int novo_socket,char *diretorio){
         fwrite(buffer, 1, bytes, arquivo);
         bytes_recebidos += bytes;
     }
-    
+    pthread_mutex_lock(conflitOperations);
+    removeOperation(nome_arquivo,UPDATED_FILE,SERVER,novo_socket);
+    pthread_mutex_unlock(conflitOperations);
     fclose(arquivo);
     close(novo_socket);
 
@@ -49,7 +119,7 @@ int receiveNewFileFromClient(int novo_socket,char *diretorio){
 
 }
 
-int removeFileInServer(int novo_socket, char *diretorio) {
+int removeFileInServer(int novo_socket, char *diretorio,pthread_mutex_t *conflitOperations) {
     
     int tamanho_nome;
     char nome_arquivo[1024];
@@ -59,7 +129,20 @@ int removeFileInServer(int novo_socket, char *diretorio) {
         return 1;
     recv(novo_socket, nome_arquivo, tamanho_nome, 0);
     nome_arquivo[tamanho_nome] = '\0';
+    
+   
+    int wait=1;
+    while(wait){
+        usleep(100000);
+        pthread_mutex_lock(conflitOperations);
+        if(!isFileInClientServerConflitOperation(nome_arquivo,REMOVED_FILE,SERVER)){
+            wait=0;
+          insertOperation(nome_arquivo,REMOVED_FILE,SERVER,novo_socket);
 
+         }
+        pthread_mutex_unlock(conflitOperations);
+
+    }
     
     
     // Caminho completo
@@ -73,12 +156,14 @@ int removeFileInServer(int novo_socket, char *diretorio) {
         perror("Erro ao remover o arquivo");
         return 1;
     }
-
+    pthread_mutex_lock(conflitOperations);
+    removeOperation(nome_arquivo,REMOVED_FILE,SERVER,novo_socket);
+    pthread_mutex_unlock(conflitOperations);
     close(novo_socket);
     return 0;
 }
 
-int updateFileName(int novo_socket, char *diretorio) {
+int updateFileName(int novo_socket, char *diretorio,pthread_mutex_t *conflitOperations) {
     int tamanho_nome;
     char nome_antigo[1024];
     char nome_novo[1024];
@@ -88,7 +173,20 @@ int updateFileName(int novo_socket, char *diretorio) {
         return 1;
     recv(novo_socket, nome_antigo, tamanho_nome, 0);
     nome_antigo[tamanho_nome] = '\0';
+    
+   
+    int wait=1;
+    while(wait){
+        usleep(100000);
+        pthread_mutex_lock(conflitOperations);
+        if(!isFileInClientServerConflitOperation(nome_antigo,RENAMED_FILE,SERVER)){
+            wait=0;
+           insertOperation(nome_antigo,RENAMED_FILE,SERVER,novo_socket);
 
+         }
+        pthread_mutex_unlock(conflitOperations);
+
+    }
     // Caminho completo antigo
     char caminho_completo_antigo[1024 * 2];
     snprintf(caminho_completo_antigo, sizeof(caminho_completo_antigo), "%s/%s", diretorio, nome_antigo);
@@ -110,12 +208,14 @@ int updateFileName(int novo_socket, char *diretorio) {
     } else {
         printf("Arquivo '%s' renomeado para '%s' com sucesso!\n", nome_antigo, nome_novo);
     }
-
+    pthread_mutex_lock(conflitOperations);
+    removeOperation(nome_antigo,RENAMED_FILE,SERVER,novo_socket);
+    pthread_mutex_unlock(conflitOperations);
     close(novo_socket);
     return 0;
 }
 
-int sendNewFileToClient(int novo_socket, char *diretorio) {
+int sendNewFileToClient(int novo_socket, char *diretorio,pthread_mutex_t *conflitOperations) {
     int tamanho_nome;
     char nome_arquivo[1024];
     char buffer[1024];
@@ -125,6 +225,19 @@ int sendNewFileToClient(int novo_socket, char *diretorio) {
     recv(novo_socket, nome_arquivo, tamanho_nome, 0);
     nome_arquivo[tamanho_nome] = '\0';
 
+
+    int wait=1;
+    while(wait){
+        usleep(100000);
+        pthread_mutex_lock(conflitOperations);
+        if(!isFileInClientServerConflitOperation(nome_arquivo,UPDATED_FILE,CLIENT)){
+            wait=0;
+            insertOperation(nome_arquivo,UPDATED_FILE,CLIENT,novo_socket);
+
+         }
+        pthread_mutex_unlock(conflitOperations);
+
+    }
     // Caminho completo
     char caminho_completo[1024 * 2];
     snprintf(caminho_completo, sizeof(caminho_completo), "%s/%s", diretorio, nome_arquivo);
@@ -146,7 +259,9 @@ int sendNewFileToClient(int novo_socket, char *diretorio) {
     while ((bytes_lidos = fread(buffer, 1, 1024, arquivo)) > 0) {
         send(novo_socket, buffer, bytes_lidos, 0);
     }
-
+    pthread_mutex_lock(conflitOperations);
+    removeOperation(nome_arquivo,UPDATED_FILE,CLIENT,novo_socket);
+    pthread_mutex_unlock(conflitOperations);
     fclose(arquivo);
     close(novo_socket);
     return 0;

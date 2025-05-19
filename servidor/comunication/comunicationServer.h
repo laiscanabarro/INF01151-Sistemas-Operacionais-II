@@ -1,6 +1,12 @@
 #include <sys/stat.h>
 #include <time.h>
-int enviando=0;
+#include <pthread.h>
+
+typedef enum {
+    SERVER,      
+    CLIENT,    
+} operation_destiny_t;
+
 // Tipos de notificação para facilitar o uso e a comparação
 typedef enum {
     UPDATED_FILE,      // Arquivo atualizado
@@ -15,16 +21,23 @@ typedef struct {
     notification_type_t type;      // Tipo da notificação
 } notification_t;
 
-int receiveNewFileFromClient(int novo_socket,char *diretorio);
-int removeFileInServer(int novo_socket,char *diretorio);
-int updateFileName(int novo_socket,char *diretorio);
-int sendNewFileToClient(int novo_socket, char *diretorio);
-int sendLastSecondNotificationToClient(int novo_socket,char *diretorio);
-//int sendLastSessionNotificationTocLient(int novo_socket,char *diretorio,time_t timeLastSession);
+typedef struct {
+    notification_t notification;
+    operation_destiny_t destiny;
+    int serverSock;
+} operation_t;
+
+// Declaração de variáveis globais (uso de extern)
+extern int nOperations;
+extern operation_t actualOperations[100];
+
+// Declaração das funções
+int receiveNewFileFromClient(int novo_socket, char *diretorio, pthread_mutex_t *conflitOperations);
+int removeFileInServer(int novo_socket, char *diretorio, pthread_mutex_t *conflitOperations);
+int updateFileName(int novo_socket, char *diretorio, pthread_mutex_t *conflitOperations);
+int sendNewFileToClient(int novo_socket, char *diretorio, pthread_mutex_t *conflitOperations);
+int sendLastSecondNotificationToClient(int novo_socket, char *diretorio);
 int receiveLastSecondLocalNotification(notification_t *notification, char *diretorio);
 int sendFileListToClient(int novo_socket, char *diretorio);
 void obterListaArquivos(char *diretorio, char ***arquivos, int *nArquivos);
-//int receiveLastSessionLocalNotification(notification_t *notification, char *diretorio, time_t timeLastSession);
 void filterNotifications(notification_t *notifications, int *num_notifications);
-
-
