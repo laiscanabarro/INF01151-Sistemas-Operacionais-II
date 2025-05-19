@@ -622,6 +622,8 @@ void* cleanup_thread(void* arg) {
 void list_client_files() {
     DIR *dir;
     struct dirent *entry;
+    struct stat file_stat;
+    char full_path[MAX_PATH_SIZE];
     
     printf("\n--- Arquivos no diretório do cliente ---\n");
     
@@ -631,11 +633,30 @@ void list_client_files() {
         return;
     }
     
+    printf("%-30s %-20s %-20s %-20s\n", "Nome", "Modificação", "Acesso", "Criação/Alteração");
+    printf("%-30s %-20s %-20s %-20s\n", "------------------------------", "--------------------", "--------------------", "--------------------");
+    
     while ((entry = readdir(dir)) != NULL) {
         if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
             continue;
             
-        printf("%s\n", entry->d_name);
+        int written = snprintf(full_path, MAX_PATH_SIZE, "%s/%s", client_info.sync_dir_path, entry->d_name);
+        if (written < 0 || written >= MAX_PATH_SIZE) {
+            fprintf(stderr, "Caminho muito longo: %s/%s\n", client_info.sync_dir_path, entry->d_name);
+            continue;
+        }
+        
+        if (stat(full_path, &file_stat) == -1) {
+            perror("Erro ao obter informações do arquivo");
+            continue;
+        }
+        
+        char mtime_str[20], atime_str[20], ctime_str[20];
+        strftime(mtime_str, sizeof(mtime_str), "%Y-%m-%d %H:%M:%S", localtime(&file_stat.st_mtime));
+        strftime(atime_str, sizeof(atime_str), "%Y-%m-%d %H:%M:%S", localtime(&file_stat.st_atime));
+        strftime(ctime_str, sizeof(ctime_str), "%Y-%m-%d %H:%M:%S", localtime(&file_stat.st_ctime));
+        
+        printf("%-30s %-20s %-20s %-20s\n", entry->d_name, mtime_str, atime_str, ctime_str);
     }
     
     closedir(dir);
