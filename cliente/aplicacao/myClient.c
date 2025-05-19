@@ -720,10 +720,11 @@ void download_file(const char *filename) {
         return;
     }
     
-    int result = receiveNewFileFromServer((char*)filename, client_info.sync_dir_path, client_info.server_port, client_info.server_ip);
+    int result = receiveNewFileFromServer((char*)filename, current_dir, client_info.server_port, client_info.server_ip);
     
     if (result == 0) {
-        printf("Arquivo %s baixado com sucesso.\n", filename);
+        printf("Arquivo %s baixado com sucesso para o diretório atual: %s\n", 
+               filename, current_dir);
     } else {
         printf("Erro ao baixar o arquivo %s.\n", filename);
     }
