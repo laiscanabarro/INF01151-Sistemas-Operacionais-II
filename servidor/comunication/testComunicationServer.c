@@ -8,6 +8,7 @@
 #define PORTA 8080
 #define TAMANHO_BUFFER 1024
 
+pthread_mutex_t conflitOperation = PTHREAD_MUTEX_INITIALIZER;
 // Estrutura para passar parâmetros para a thread
 typedef struct {
     int socket;
@@ -25,16 +26,16 @@ void *handle_client(void *args) {
     recv(novo_socket, &codigo, sizeof(int), 0);
 
     if (codigo == 1) {
-        if (receiveNewFileFromClient(novo_socket, diretorio) == 1)
+        if (receiveNewFileFromClient(novo_socket, diretorio,&conflitOperation) == 1)
             printf("Erro ao receber o arquivo\n");
     } else if (codigo == 2) {
-        if (removeFileInServer(novo_socket, diretorio) == 1)
+        if (removeFileInServer(novo_socket, diretorio,&conflitOperation) == 1)
             printf("Erro ao remover o arquivo\n");
     } else if (codigo == 3) {
-        if (updateFileName(novo_socket, diretorio) == 1)
+        if (updateFileName(novo_socket, diretorio,&conflitOperation) == 1)
             printf("Erro ao atualizar o nome do arquivo\n");
     } else if (codigo == 4) {
-        if (sendNewFileToClient(novo_socket, diretorio) == 1)
+        if (sendNewFileToClient(novo_socket, diretorio,&conflitOperation) == 1)
             printf("Erro ao atualizar o arquivo no cliente\n");
     } else if (codigo == 5) {
         if (sendLastSecondNotificationToClient(novo_socket, diretorio) == 1)
