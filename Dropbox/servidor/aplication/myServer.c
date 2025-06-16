@@ -82,14 +82,7 @@ int main() {
     int opt = 1;
     
     int tamanho_endereco = sizeof(endereco);
-    /*
-    char diretorio[TAMANHO_BUFFER];
-    
-    // Pergunta o diretório de trabalho do servidor
-    printf("Digite o diretório para salvar os arquivos recebidos:\n");
-    fgets(diretorio, TAMANHO_BUFFER, stdin);
-    diretorio[strcspn(diretorio, "\n")] = '\0';
-     //faca a logica aqui*/
+  
     // Criação do socket
     servidor_fd = socket(AF_INET, SOCK_STREAM, 0);
     setsockopt(servidor_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));

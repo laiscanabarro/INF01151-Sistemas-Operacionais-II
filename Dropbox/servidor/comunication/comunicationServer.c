@@ -7,9 +7,13 @@
 #include <time.h>
 #include <pthread.h>
 #include "comunicationServer.h"
+#include <sys/stat.h>
+
+#define MAX_NOTIFICATIONS 1024
 
 int nOperations = 0;
 operation_t actualOperations[100];
+
 //verifica se o arquivo esta atualmente numa operacao cliente/servidor (envio de arquivos,etc) conflitante com a operacao desejada
 int isFileInClientServerConflitOperation(char *file_name, notification_type_t type, operation_destiny_t destiny) {
     for (int i = 0; i < nOperations; i++) {
@@ -61,7 +65,6 @@ int removeOperation(char *file_name, notification_type_t type, operation_destiny
 }
 
 int receiveNewFileFromClient(int novo_socket,char *diretorio,pthread_mutex_t *conflitOperations){
-    
     int tamanho_nome;
     char nome_arquivo[1024];
     char buffer[1024];
@@ -114,13 +117,9 @@ int receiveNewFileFromClient(int novo_socket,char *diretorio,pthread_mutex_t *co
     pthread_mutex_unlock(conflitOperations);
     fclose(arquivo);
     close(novo_socket);
-
-
-
 }
 
-int removeFileInServer(int novo_socket, char *diretorio,pthread_mutex_t *conflitOperations) {
-    
+int removeFileInServer(int novo_socket, char *diretorio,pthread_mutex_t *conflitOperations) {  
     int tamanho_nome;
     char nome_arquivo[1024];
     
@@ -142,8 +141,7 @@ int removeFileInServer(int novo_socket, char *diretorio,pthread_mutex_t *conflit
          }
         pthread_mutex_unlock(conflitOperations);
 
-    }
-    
+    }   
     
     // Caminho completo
     char caminho_completo[1024 * 2];
@@ -225,7 +223,6 @@ int sendNewFileToClient(int novo_socket, char *diretorio,pthread_mutex_t *confli
     recv(novo_socket, nome_arquivo, tamanho_nome, 0);
     nome_arquivo[tamanho_nome] = '\0';
 
-
     int wait=1;
     while(wait){
         usleep(100000);
@@ -238,6 +235,7 @@ int sendNewFileToClient(int novo_socket, char *diretorio,pthread_mutex_t *confli
         pthread_mutex_unlock(conflitOperations);
 
     }
+
     // Caminho completo
     char caminho_completo[1024 * 2];
     snprintf(caminho_completo, sizeof(caminho_completo), "%s/%s", diretorio, nome_arquivo);
@@ -267,18 +265,6 @@ int sendNewFileToClient(int novo_socket, char *diretorio,pthread_mutex_t *confli
     return 0;
 }
 
-
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <dirent.h>
-#include <sys/stat.h>
-#include <unistd.h>
-#include <time.h>
-
-
-
-#define MAX_NOTIFICATIONS 1024
 int sendLastSecondNotificationToClient(int novo_socket, char *diretorio) {
     notification_t notifications[MAX_NOTIFICATIONS];
     int num_notifications = receiveLastSecondLocalNotification(notifications, diretorio);
@@ -310,160 +296,6 @@ int sendLastSecondNotificationToClient(int novo_socket, char *diretorio) {
     close(novo_socket);
     return 0;
 }
-
-/*
-int sendLastSessionNotificationToClient(int novo_socket, char *diretorio, time_t timeLastSession) {
-    notification_t notifications[MAX_NOTIFICATIONS];
-    int num_notifications = receiveLastSessionLocalNotification(notifications, diretorio, timeLastSession);
-
-    // Verifica se houve erro ao obter notificações
-    if (num_notifications < 0) {
-        perror("Erro ao obter notificações da última sessão");
-        close(novo_socket);
-        return 1;
-    }
-
-    // Enviar o número de notificações para o cliente
-    if (send(novo_socket, &num_notifications, sizeof(int), 0) <= 0) {
-        perror("Erro ao enviar número de notificações");
-        close(novo_socket);
-        return 1;
-    }
-
-    // Enviar cada notificação para o cliente
-    for (int i = 0; i < num_notifications; i++) {
-        if (send(novo_socket, &notifications[i], sizeof(notification_t), 0) <= 0) {
-            perror("Erro ao enviar notificação");
-            close(novo_socket);
-            return 1;
-        }
-    }
-
-    printf("Notificações desde a última sessão enviadas com sucesso!\n");
-    close(novo_socket);
-    return 0;
-}
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <dirent.h>
-#include <sys/stat.h>
-#include <unistd.h>
-#include <time.h>
-*/
-#define MAX_NOTIFICATIONS 1024
-/*
-// Função para receber notificações locais da última sessão
-int receiveLastSessionLocalNotification(notification_t *notifications, char *diretorio, time_t timeLastSession) {
-    DIR *dir;
-    struct dirent *entry;
-    struct stat file_stat;
-    char full_path[1024];
-    int notification_count = 0;
-
-    // Variáveis estáticas para armazenar o estado anterior
-    static struct stat previous_stats[1024];
-    static char previous_names[1024][200];
-    static int previous_count = 0;
-
-    // Abrir o diretório para leitura
-    dir = opendir(diretorio);
-    if (!dir) {
-        perror("Erro ao abrir o diretório");
-        return 1;
-    }
-
-    // Iterar sobre os arquivos do diretório
-    while ((entry = readdir(dir)) != NULL) {
-        // Ignorar "." e ".."
-        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
-            continue;
-
-        // Montar o caminho completo do arquivo
-        snprintf(full_path, sizeof(full_path), "%s/%s", diretorio, entry->d_name);
-
-        // Obter informações do arquivo
-        if (stat(full_path, &file_stat) == -1) {
-            perror("Erro ao obter informações do arquivo");
-            continue;
-        }
-
-        // Verificar se o arquivo é novo ou atualizado desde a última sessão
-        int found = 0;
-        for (int i = 0; i < previous_count; i++) {
-            if (file_stat.st_ino == previous_stats[i].st_ino) {
-                found = 1;
-
-                // Verificar se o nome foi alterado
-                if (strcmp(entry->d_name, previous_names[i]) != 0) {
-                    strncpy(notifications[notification_count].fileName, entry->d_name, sizeof(notifications[notification_count].fileName));
-                    strncpy(notifications[notification_count].ancientFileName, previous_names[i], sizeof(notifications[notification_count].ancientFileName));
-                    notifications[notification_count].type = RENAMED_FILE;
-                    notification_count++;
-                }
-                
-                // Verificar se o arquivo foi atualizado
-                if (file_stat.st_mtime > timeLastSession) {
-                    strncpy(notifications[notification_count].fileName, entry->d_name, sizeof(notifications[notification_count].fileName));
-                    notifications[notification_count].type = UPDATED_FILE;
-                    notification_count++;
-                }
-                break;
-            }
-        }
-
-        // Arquivo novo
-        if (!found) {
-            strncpy(notifications[notification_count].fileName, entry->d_name, sizeof(notifications[notification_count].fileName));
-            notifications[notification_count].type = UPDATED_FILE;
-            notification_count++;
-        }
-    }
-    closedir(dir);
-
-    // Verificar arquivos removidos desde a última sessão
-    for (int i = 0; i < previous_count; i++) {
-        int found = 0;
-        dir = opendir(diretorio);
-
-        while ((entry = readdir(dir)) != NULL) {
-            snprintf(full_path, sizeof(full_path), "%s/%s", diretorio, entry->d_name);
-            if (stat(full_path, &file_stat) == -1) continue;
-
-            // Verifica se o arquivo ainda existe e se o inode é o mesmo
-            if (file_stat.st_ino == previous_stats[i].st_ino) {
-                found = 1;
-                break;
-            }
-        }
-        closedir(dir);
-
-        // Arquivo não encontrado: foi removido
-        if (!found) {
-            strncpy(notifications[notification_count].fileName, previous_names[i], sizeof(notifications[notification_count].fileName));
-            notifications[notification_count].type = REMOVED_FILE;
-            notification_count++;
-        }
-    }
-
-    // Atualizar o estado anterior com os dados atuais
-    dir = opendir(diretorio);
-    previous_count = 0;
-    while ((entry = readdir(dir)) != NULL) {
-        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
-            continue;
-
-        snprintf(full_path, sizeof(full_path), "%s/%s", diretorio, entry->d_name);
-        if (stat(full_path, &file_stat) == -1) continue;
-
-        previous_stats[previous_count] = file_stat;
-        strncpy(previous_names[previous_count], entry->d_name, sizeof(previous_names[previous_count]));
-        previous_count++;
-    }
-    closedir(dir);
-
-    return notification_count;
-}*/
 
 // Função para receber notificações locais
 int receiveLastSecondLocalNotification(notification_t *notifications, char *diretorio) {
@@ -614,9 +446,6 @@ void filterNotifications(notification_t *notifications, int *num_notifications) 
     }
 }
 
-
-
-
 int sendFileListToClient(int novo_socket, char *diretorio){
     int nArquivos=0;
     char **arquivos;
@@ -659,6 +488,7 @@ int sendFileListToClient(int novo_socket, char *diretorio){
     }
     free(arquivos);
 }
+
 void obterListaArquivos(char *diretorio, char ***arquivos, int *nArquivos) {
     DIR *dir;
     struct dirent *entry;
@@ -717,18 +547,4 @@ void obterListaArquivos(char *diretorio, char ***arquivos, int *nArquivos) {
     }
     closedir(dir);
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 

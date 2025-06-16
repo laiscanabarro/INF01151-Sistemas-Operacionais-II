@@ -1,8 +1,6 @@
 #include <sys/stat.h>
 #include <time.h>
 
-
-
 // Tipos de notificação para facilitar o uso e a comparação
 typedef enum {       
     UPDATED_FILE,      // Arquivo atualizado ou novo arquivo
@@ -17,7 +15,6 @@ typedef struct {
     notification_type_t type;      // Tipo da notificação
 } notification_t;
 
-
 int sendNewFileToServer(char *nomeArquivo,char *diretorio,int PORTA, char * IP);
 int removeFileInServer(char *nomeArquivo,char *diretorio,int PORTA, char * IP);
 int updateFileName(char *novoNovo,char *nomeAntigo,char *diretorio,int PORTA, char * IP);
@@ -26,6 +23,3 @@ int receiveLastSecondNotificationFromServer(notification_t *notification,char *d
 int receiveFileListFromServer(char ***arquivosServidor,char *diretorio,int  PORTA,char * IP);
 void filterNotifications(notification_t *notifications, int *num_notifications);
 int receiveLastSecondLocalNotification(notification_t *notifications, char *diretorio);
-//int receiveLastSessionNotificationFromServer(notification_t *notification, int PORTA, char *IP);
-
-

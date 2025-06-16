@@ -121,7 +121,6 @@ int updateFileName(char *nomeNovo, char *nomeAntigo, char *diretorio, int PORTA,
 }
 
 int receiveNewFileFromServer(char *nomeArquivo, char *diretorio, int PORTA, char *IP) {
-    
     int sock;
     struct sockaddr_in endereco;
 
@@ -144,7 +143,6 @@ int receiveNewFileFromServer(char *nomeArquivo, char *diretorio, int PORTA, char
     int tamanho_nome=strlen(nomeArquivo);
     send(sock, &tamanho_nome, sizeof(int), 0);
     send(sock, nomeArquivo, tamanho_nome, 0);
-    
     
     // Recebe o conteúdo
     char caminho_completo[1024 * 2];
@@ -235,42 +233,6 @@ int receiveLastSecondNotificationFromServer(notification_t *notification,char *d
     return num_notifications;
 }
 
-/*
-int  receiveLastSessionNotificationFromServer(notification_t *notification,int PORTA,char *IP){
-    int sock;
-    struct sockaddr_in endereco;
-
-    // Conexão ao servidor
-    sock = socket(AF_INET, SOCK_STREAM, 0);
-    endereco.sin_family = AF_INET;
-    endereco.sin_port = htons(PORTA);
-    inet_pton(AF_INET, IP, &endereco.sin_addr);
-
-        // Conectando ao servidor
-    if (connect(sock, (struct sockaddr *)&endereco, sizeof(endereco)) < 0) {
-        perror("Erro ao conectar ao servidor");
-        close(sock);
-        return 1;
-    }
-
-    // Código da operação para notificações (por exemplo, 4)
-    int codigo = 6;
-    send(sock, &codigo, sizeof(int), 0);
-
-    // Recebendo a estrutura de notificação
-    int bytes_recebidos = recv(sock, notification, sizeof(notification_t), 0);
-    if (bytes_recebidos <= 0) {
-        perror("Erro ao receber notificação");
-        close(sock);
-        return 1;
-    }
-
-
-    close(sock);
-    return 0;
-
-}*/
-
 int receiveFileListFromServer(char ***arquivosServidor,char *diretorio,int  PORTA,char * IP){
     int sock;
     struct sockaddr_in endereco;
@@ -299,22 +261,22 @@ int receiveFileListFromServer(char ***arquivosServidor,char *diretorio,int  PORT
         return 1;
     }
     
-
     int nArquivos=0;
     if (recv(sock, &nArquivos, sizeof(int), 0) <= 0) {
         perror("Erro ao enviar código para o servidor");
         close(sock);
         return 1;
     }
+
     (*arquivosServidor)=malloc(nArquivos*sizeof(char *));
     int len;
+    
     for(int i=0;i<nArquivos;i++){
         recv(sock, &len, sizeof(int), 0);
         (*arquivosServidor)[i]=malloc(len*sizeof(char));
         recv(sock,(*arquivosServidor)[i],len*sizeof(char),0);
 
-    }
-    
+    }  
     return nArquivos;
 }
 

@@ -8,6 +8,7 @@
 #include <dirent.h>   // Para manipulação de diretórios
 #include <sys/types.h> // Para tipos como DIR
 #include <pthread.h>
+#include <sys/stat.h>
 #define MAX_COMMAND_SIZE 1024
 #define MAX_PATH_SIZE 500
 
@@ -38,13 +39,11 @@ struct Task{
     int executing;
 
 };
+
 struct Task *pendingTasks;
 struct Task *pendingTasksToServer;
 struct Task *currentOrRecentTasksRecv;
 struct Task *currentOrRecentTasksSended;
-
-
-
 
 void insertTaskToEnd(
     struct Task **taskArray,       // Vetor de tarefas
@@ -76,8 +75,6 @@ void insertTaskToEnd(
     (*taskCount)++;
 }
 
-
-
 // Função para obter o tempo atual
 time_t obterTempoAtual() {
     return time(NULL);
@@ -97,6 +94,7 @@ int getIndex(struct Task **tasks, int *nTasks, const char *fileName, const char 
     }
     return -1;  // Não encontrado
 }
+
 // Função para inserir novas tarefas no vetor pendingTasks
 void insertNewTasks(notification_t *notifications, int num_notifications, struct Task **pendingTasks, int *nTasks) {
     if (num_notifications <= 0) return;
@@ -138,7 +136,6 @@ void insertNewTasks(notification_t *notifications, int num_notifications, struct
     free(novasTarefas);
 }
 
-
 // Função para obter o tempo atual em formato legível
 void imprimirTempo(time_t tempo) {
     struct tm *tm_info = localtime(&tempo);
@@ -156,6 +153,7 @@ const char* obterNomeNotificacao(notification_type_t tipo) {
         default: return "UNKNOWN";
     }
 }
+
 static void removeTaskAt(struct Task **tasks, int *nTasks, int idx) {
     for (int k = idx; k < *nTasks - 1; k++) {
         (*tasks)[k] = (*tasks)[k + 1];
@@ -239,6 +237,7 @@ void filterTasks(struct Task *Tasks, int *nTasks) {
         }
     }
 }
+
 int isSameNotification(notification_t *a, notification_t *b) {
     return (strcmp(a->fileName, b->fileName) == 0 &&
             strcmp(a->ancientFileName, b->ancientFileName) == 0 &&
@@ -258,55 +257,27 @@ void removeDuplicateTasks(struct Task *tasks1, int *size1, struct Task *tasks2, 
 }
 
 // Função que será executada pela nova thread
-
 void* get_server_tasks_thread_function(void* arg) {
-    
     notification_t notifications[300];
     while (client_info.running) {
-        
         usleep(300000);  // Aguardar meio segundo (500 milissegundos)
-        
-          pthread_mutex_lock(&mutex);
+        pthread_mutex_lock(&mutex);
         int num_notifications = receiveLastSecondNotificationFromServer(notifications, client_info.sync_dir_path,client_info.server_port, client_info.server_ip);
-         
-       
-       
+
         insertNewTasks(notifications, num_notifications, &pendingTasks, &nTasks);
-        
         
         pthread_mutex_lock(&mutexCurSen);
         removeDuplicateTasks(pendingTasks, &nTasks, currentOrRecentTasksSended, nCurrentOrRecentTasksSended);
         pthread_mutex_unlock(&mutexCurSen);
+
         //filtra tarefas repetidas ou que se sobrepoem
-        
         filterTasks(pendingTasks, &nTasks);
         filterTasksAux(pendingTasks, &nTasks);
         filterTasks(pendingTasks, &nTasks);
         pthread_mutex_unlock(&mutex);
-        
-        
-        // Imprimir todas as tarefas pendentes
-        /*
-        printf("\n== Lista de Tarefas Pendentes (%d tarefas) ==\n", nTasks);
-        for (int i = 0; i < nTasks; i++) {
-            printf("Arquivo: %s | Tipo: %s", 
-                   pendingTasks[i].notification.fileName, 
-                   obterNomeNotificacao(pendingTasks[i].notification.type));
-
-            if (pendingTasks[i].notification.type == RENAMED_FILE) {
-                printf(" | Nome Anterior: %s", pendingTasks[i].notification.ancientFileName);
-            }
-
-            printf(" | Tempo: ");
-            imprimirTempo(pendingTasks[i].time);
-            printf("\n");
-        }
-        fflush(stdout); */
- // Garantir que a saída seja exibida imediatamente
        
     }
-    return NULL;
-    
+    return NULL;   
 }
 
 void deleteFile(char * nome_arquivo){
@@ -328,17 +299,19 @@ void deleteFile(char * nome_arquivo){
 
     pthread_mutex_lock(&mutex);
     removeTaskAt(&pendingTasks, &nTasks,0);
-    pthread_mutex_unlock(&mutex);
-    
-
+    pthread_mutex_unlock(&mutex);  
 }
+
 void renameFile(char * nome_arquivo_novo,char * nome_arquivo_antigo){
     char caminho_completo_novo[1000];
     snprintf(caminho_completo_novo, sizeof(caminho_completo_novo), "%s/%s", client_info.sync_dir_path, nome_arquivo_novo);
+    
     char caminho_completo_antigo[1000];
     snprintf(caminho_completo_antigo, sizeof(caminho_completo_antigo), "%s/%s", client_info.sync_dir_path, nome_arquivo_antigo);
+    
     pthread_mutex_lock(&mutex3);
     insertTaskToEnd(&currentOrRecentTasksRecv, &nCurrentOrRecentTasksRecv, nome_arquivo_novo, nome_arquivo_antigo, RENAMED_FILE, 1);
+    
     pthread_mutex_unlock(&mutex3);
     rename(caminho_completo_antigo, caminho_completo_novo);
        
@@ -351,10 +324,9 @@ void renameFile(char * nome_arquivo_novo,char * nome_arquivo_antigo){
     pthread_mutex_lock(&mutex);
     removeTaskAt(&pendingTasks, &nTasks,0);
     pthread_mutex_unlock(&mutex);
-
 }
+
 void updateFile(char * nome_arquivo){
-   
     char caminho_completo[1000];
     snprintf(caminho_completo, sizeof(caminho_completo), "%s/%s", client_info.sync_dir_path, nome_arquivo);
     pthread_mutex_lock(&mutex3);
@@ -372,70 +344,43 @@ void updateFile(char * nome_arquivo){
     removeTaskAt(&pendingTasks, &nTasks,0);
     
     pthread_mutex_unlock(&mutex);
-   
-
 }
 
 void* process_local_task_thread_function(void* arg) {
-    
     while(client_info.running){
-        
-        
-       
         usleep(100000);
-        
-        pthread_mutex_lock(&mutex);
-        
-        
-        if(nTasks!=0&&getIndex(&currentOrRecentTasksRecv, &nCurrentOrRecentTasksRecv, pendingTasks[0].notification.fileName, pendingTasks[0].notification.ancientFileName,
-        pendingTasks[0].notification.type, 0)==-1){
-          
+        pthread_mutex_lock(&mutex);    
+        if (nTasks!=0&&getIndex(&currentOrRecentTasksRecv, &nCurrentOrRecentTasksRecv, pendingTasks[0].notification.fileName, pendingTasks[0].notification.ancientFileName,
+        pendingTasks[0].notification.type, 0)==-1){  
             struct Task task= pendingTasks[0];
             pthread_mutex_unlock(&mutex);
-        switch (task.notification.type)
-        {
-        case 0:
-           
-            updateFile(task.notification.fileName);
-            break;
-         case 1:
-            renameFile(task.notification.fileName,task.notification.ancientFileName);
-            break;
-         case 2:
-            deleteFile(task.notification.fileName);
-            break;
-        
-        default:
-            break;
-        }
-        
-        
-
-
-
-        }
-        else{
+            switch (task.notification.type){
+                case 0:
+                    updateFile(task.notification.fileName);
+                    break;
+                case 1:
+                    renameFile(task.notification.fileName,task.notification.ancientFileName);
+                    break;
+                case 2:
+                    deleteFile(task.notification.fileName);
+                    break;
+                
+                default:
+                    break;
+            }
+        } else {
             pthread_mutex_unlock(&mutex);
         }
-        
-        
-
-
     }
-    
-
 }
 
 void* get_local_tasks_thread_function(void* arg) {
-    
     while(client_info.running){
-   
-    usleep(500000);
-    notification_t notifications[300];
-    int num_notifications = receiveLastSecondLocalNotification(notifications,client_info.sync_dir_path);
-   
-    
-    pthread_mutex_lock(&mutexTasksToServer);
+        usleep(500000);
+        notification_t notifications[300];
+        int num_notifications = receiveLastSecondLocalNotification(notifications,client_info.sync_dir_path);
+
+        pthread_mutex_lock(&mutexTasksToServer);
         insertNewTasks(notifications, num_notifications, &pendingTasksToServer, &nTasksToServer);
         // Imprimir todas as tarefas pendentes
 
@@ -446,39 +391,13 @@ void* get_local_tasks_thread_function(void* arg) {
         filterTasks(pendingTasksToServer, &nTasksToServer);
         filterTasksAux(pendingTasksToServer, &nTasksToServer);
         filterTasks(pendingTasksToServer, &nTasksToServer);
-    pthread_mutex_unlock(&mutexTasksToServer);
-        
-        
-
-       
-        /*
-        // Imprimir todas as tarefas pendentes
-        printf("\n== Lista de Tarefas Pendentes (%d tarefas) ==\n", nTasksToServer);
-        for (int i = 0; i < nTasksToServer; i++) {
-            printf("1 taskToServer %d", nTasksToServer);
-            printf("Arquivo: %s | Tipo: %s", 
-                   pendingTasksToServer[i].notification.fileName, 
-                   obterNomeNotificacao(pendingTasksToServer[i].notification.type));
-
-            if (pendingTasksToServer[i].notification.type == RENAMED_FILE) {
-                printf(" | Nome Anterior: %s", pendingTasksToServer[i].notification.ancientFileName);
-            }
-            printf("1 taskToServer %d", nTasksToServer);
-            printf(" | Tempo: ");
-            imprimirTempo(pendingTasksToServer[i].time);
-            printf("\n");
-            printf("1 taskToServer %d", nTasksToServer);
-        }*/
+        pthread_mutex_unlock(&mutexTasksToServer);
+            
         fflush(stdout); 
-       
     }
-
-     
-    
-
 }
-void* clear_executed_local_tasks_function(void* arg) {
 
+void* clear_executed_local_tasks_function(void* arg) {
     while (client_info.running) {
        
         usleep(300000);  // Atraso de 100 milissegundos (0.1 segundo)
@@ -494,29 +413,13 @@ void* clear_executed_local_tasks_function(void* arg) {
                 i--;  // Ajusta o índice após a remoção
             }
         }
-        /*
-        printf("\n== Lista de Tarefas Pendentes (%d tarefas) ==\n", nCurrentOrRecentTasksRecv);
-        for (int i = 0; i <nCurrentOrRecentTasksRecv; i++) {
-            printf("Arquivo: %s | Tipo: %s", 
-                  currentOrRecentTasksRecv[i].notification.fileName, 
-                   obterNomeNotificacao(currentOrRecentTasksRecv[i].notification.type));
-
-            if (currentOrRecentTasksRecv[i].notification.type == RENAMED_FILE) {
-                printf(" | Nome Anterior: %s", currentOrRecentTasksRecv[i].notification.ancientFileName);
-            }
-
-            printf(" | Tempo: ");
-            imprimirTempo(currentOrRecentTasksRecv[i].time);
-            printf("\n");
-        }
-        fflush(stdout); */
         pthread_mutex_unlock(&mutex3);
         
     }
     return NULL;
 }
+
 void updateFileServer(char * nome_arquivo){
-   
     char caminho_completo[1000];
     snprintf(caminho_completo, sizeof(caminho_completo), "%s/%s", client_info.sync_dir_path, nome_arquivo);
     pthread_mutex_lock(& mutexCurSen);
@@ -536,11 +439,9 @@ void updateFileServer(char * nome_arquivo){
     removeTaskAt(&pendingTasksToServer, &nTasksToServer,0);
     
     pthread_mutex_unlock(&mutexTasksToServer);
-   
-
 }
+
 void removeFileServer(char * nome_arquivo){
-   
     char caminho_completo[1000];
     snprintf(caminho_completo, sizeof(caminho_completo), "%s/%s", client_info.sync_dir_path, nome_arquivo);
     pthread_mutex_lock(& mutexCurSen);
@@ -558,12 +459,9 @@ void removeFileServer(char * nome_arquivo){
     removeTaskAt(&pendingTasksToServer, &nTasksToServer,0);
     
     pthread_mutex_unlock(&mutexTasksToServer);
-   
-
 }
 
 void renameFileServer(char * nome_arquivo_novo,char * nome_arquivo_antigo){
-   
     pthread_mutex_lock(& mutexCurSen);
     insertTaskToEnd(&currentOrRecentTasksSended, &nCurrentOrRecentTasksSended, nome_arquivo_novo, nome_arquivo_antigo, RENAMED_FILE, 1);
     pthread_mutex_unlock(& mutexCurSen);
@@ -580,65 +478,36 @@ void renameFileServer(char * nome_arquivo_novo,char * nome_arquivo_antigo){
     removeTaskAt(&pendingTasksToServer, &nTasksToServer,0);
     
     pthread_mutex_unlock(&mutexTasksToServer);
-   
-
 }
+
 void* process_server_task_thread_function(void* arg) {
-    
     while(client_info.running){
-        
-        
-       
         usleep(100000);
         pthread_mutex_lock(&mutexTasksToServer);
         
-        
-        
         if(nTasksToServer!=0&&getIndex(&currentOrRecentTasksSended, &nCurrentOrRecentTasksSended, pendingTasksToServer[0].notification.fileName, pendingTasksToServer[0].notification.ancientFileName,
         pendingTasksToServer[0].notification.type, 0)==-1){
-          
             struct Task task= pendingTasksToServer[0];
             pthread_mutex_unlock(&mutexTasksToServer);
-        switch (task.notification.type)
-        {
-        case 0:
-           
-            updateFileServer(task.notification.fileName);
-            break;
-         case 1:
-            renameFileServer(task.notification.fileName,task.notification.ancientFileName);
-            break;
-         case 2:
-            removeFileServer(task.notification.fileName);
-            break;
-        
-        default:
-            break;
-        }
-        
-        
-
-
-
+            switch (task.notification.type){
+                case 0:
+                
+                    updateFileServer(task.notification.fileName);
+                    break;
+                case 1:
+                    renameFileServer(task.notification.fileName,task.notification.ancientFileName);
+                    break;
+                case 2:
+                    removeFileServer(task.notification.fileName);
+                    break;
+                
+                default:
+                    break;
+            }       
         }
         pthread_mutex_unlock(&mutexTasksToServer);
-        
-        
-
-
     }
-    
-
 }
-#include <dirent.h>   // Para manipulação de diretórios
-#include <sys/types.h> // Para tipos como DIR
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
-#include <sys/stat.h>
-#include <dirent.h>
-#include <pthread.h>
 
 void get_sync_dir() {
     DIR *dir;
@@ -734,30 +603,11 @@ void* clear_executed_server_tasks_function(void* arg) {
                 i--;  // Ajusta o índice após a remoção
             }
         }
-        /*
-        printf("\n== Lista de Tarefas Pendentes (%d tarefas) ==\n", nCurrentOrRecentTasksRecv);
-        for (int i = 0; i <nCurrentOrRecentTasksRecv; i++) {
-            printf("Arquivo: %s | Tipo: %s", 
-                  currentOrRecentTasksRecv[i].notification.fileName, 
-                   obterNomeNotificacao(currentOrRecentTasksRecv[i].notification.type));
-
-            if (currentOrRecentTasksRecv[i].notification.type == RENAMED_FILE) {
-                printf(" | Nome Anterior: %s", currentOrRecentTasksRecv[i].notification.ancientFileName);
-            }
-
-            printf(" | Tempo: ");
-            imprimirTempo(currentOrRecentTasksRecv[i].time);
-            printf("\n");
-        }
-        fflush(stdout); */
         pthread_mutex_unlock(&mutexCurSen);
         
     }
     return NULL;
 }
-
-
-
 
 //limpa o diretorio no inicio do programa
 void clean_directory(const char *path) {
@@ -787,46 +637,6 @@ void clean_directory(const char *path) {
 
     closedir(dir);
 }
-// Função para iniciar a sincronização
-/*
-void get_sync_dir() {
-    printf("Iniciando sincronização do diretório...\n");       
-    /*
-    // Verifica se o diretório existe
-    if (check_and_create_directory(client_info.sync_dir_path) != 0) {
-        printf("Erro ao preparar diretório de sincronização.\n");
-        return;
-    }
-    clean_directory(client_info.sync_dir_path);
-    // Obter os nomes dos arquivos que estão no servidor
-    char **arquivosServidor;
-    int num_arquivos = receiveFileListFromServer(&arquivosServidor, client_info.server_port, client_info.server_ip);
-    
-    if (num_arquivos < 0) {
-        perror("Erro ao obter lista de arquivos do servidor");
-        return;
-    }
-    
-    // Inserir as tarefas no vetor pendingTasks (usando mutex)
-    notification_t *notificacoes = malloc(num_arquivos * sizeof(notification_t));
-    if (notificacoes == NULL) {
-        perror("Erro ao alocar memória para notificações");
-        pthread_mutex_unlock(&mutex);
-        return;
-    }
-    
-    for (int i = 0; i < num_arquivos; i++) {
-        strcpy(notificacoes[i].fileName, arquivosServidor[i]);
-        notificacoes[i].type = UPDATED_FILE;
-        free(arquivosServidor[i]);
-    }
-    free(arquivosServidor);
-    
-    insertNewTasks(notificacoes, num_arquivos, &pendingTasks, &nTasks);
-    free(notificacoes);
-    
-    printf("Diretório de sincronização pronto.\n");
-}*/
 
 // Funções de interface com o usuário
 
@@ -1148,7 +958,4 @@ int main(int argc, char *argv[]) {
     
     printf("Cliente encerrado.\n");
     return 0;
-    
-
-   
 }
