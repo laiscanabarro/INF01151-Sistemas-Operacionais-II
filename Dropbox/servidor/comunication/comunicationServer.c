@@ -13,6 +13,7 @@
 
 int nOperations = 0;
 operation_t actualOperations[100];
+client_list clients;
 
 //verifica se o arquivo esta atualmente numa operacao cliente/servidor (envio de arquivos,etc) conflitante com a operacao desejada
 int isFileInClientServerConflitOperation(char *file_name, notification_type_t type, operation_destiny_t destiny) {
@@ -548,3 +549,17 @@ void obterListaArquivos(char *diretorio, char ***arquivos, int *nArquivos) {
     closedir(dir);
 }
 
+// Obtém o número de dispositivos conectados para um usuário
+int get_connected_devices(const char* username) {
+    int count = 0;
+    
+    pthread_mutex_lock(&clients.mutex);
+    for (int i = 0; i < clients.client_count; i++) {
+        if (strcmp(clients.clients[i].username, username) == 0 && clients.clients[i].is_active) {
+            count++;
+        }
+    }
+    pthread_mutex_unlock(&clients.mutex);
+    
+    return count;
+}

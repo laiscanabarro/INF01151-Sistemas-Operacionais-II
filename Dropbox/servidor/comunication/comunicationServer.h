@@ -1,6 +1,8 @@
 #include <sys/stat.h>
 #include <time.h>
 #include <pthread.h>
+#define MAX_FILEPATH 512
+#define MAX_CLIENTS 100
 
 typedef enum {
     SERVER,      
@@ -27,6 +29,22 @@ typedef struct {
     int serverSock;
 } operation_t;
 
+// Estrutura de cliente
+typedef struct client {
+    int socket_fd;          // Descritor do socket
+    char username[50];      // Nome do usuário
+    pthread_t thread_id;    // ID da thread do cliente
+    int device_id;          // ID do dispositivo (1 ou 2)
+    char sync_dir[MAX_FILEPATH]; // Caminho do diretório de sincronização
+    int is_active;          // Flag para indicar se o cliente está ativo
+} client;
+
+typedef struct {
+    client clients[MAX_CLIENTS];
+    int client_count;
+    pthread_mutex_t mutex;
+} client_list;
+
 // Declaração de variáveis globais (uso de extern)
 extern int nOperations;
 extern operation_t actualOperations[100];
@@ -41,3 +59,4 @@ int receiveLastSecondLocalNotification(notification_t *notification, char *diret
 int sendFileListToClient(int novo_socket, char *diretorio);
 void obterListaArquivos(char *diretorio, char ***arquivos, int *nArquivos);
 void filterNotifications(notification_t *notifications, int *num_notifications);
+int get_connected_devices(const char* username);
