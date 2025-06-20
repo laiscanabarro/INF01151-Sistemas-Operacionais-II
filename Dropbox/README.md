@@ -24,7 +24,13 @@ gcc -o client cliente/aplication/myClient.c \
 ### 1. Iniciar o servidor
 
 ```bash
-./server
+./server <port>
+```
+
+### Exemplo:
+
+```bash
+./server 8080
 ```
 
 ### 2. Iniciar o(s) cliente(s)

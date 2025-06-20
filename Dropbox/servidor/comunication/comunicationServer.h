@@ -2,6 +2,8 @@
 #define COMUNICATION_SERVER_H
 
 #include "../../common.h" 
+
+#define MAX_CLIENTS 100
 typedef enum {
     SERVER,      
     CLIENT,    
@@ -13,7 +15,14 @@ typedef struct {
     int serverSock;
 } operation_t;
 
-// Declaração de variáveis globais (uso de extern)
+// Estrutura para armazenar informações sobre os clientes conectados
+typedef struct {
+    client clients[MAX_CLIENTS];
+    int client_count;
+    pthread_mutex_t mutex;
+} client_list;
+
+// Declaração de variáveis globais 
 extern int nOperations;
 extern operation_t actualOperations[100];
 
