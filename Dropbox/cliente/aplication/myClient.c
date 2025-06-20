@@ -5,39 +5,33 @@
 #include <arpa/inet.h>
 #include <time.h>
 #include "../comunication/comunicationClient.h"
-#include <dirent.h>   // Para manipulação de diretórios
-#include <sys/types.h> // Para tipos como DIR
+#include <dirent.h>   
+#include <sys/types.h> 
 #include <pthread.h>
 #include <sys/stat.h>
+
 #define MAX_COMMAND_SIZE 1024
 #define MAX_PATH_SIZE 500
 
-typedef struct {
-    char username[50];
-    char sync_dir_path[MAX_PATH_SIZE];
-    char server_ip[16];
-    int server_port;
-    int running;
-} client_info_t;
-
-client_info_t client_info;
+client client_info;
 
 // Definição e inicialização do mutex (uma única vez)
-pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;//
-pthread_mutex_t mutex3 = PTHREAD_MUTEX_INITIALIZER;//
+pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t mutex3 = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t mutex5 = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t mutexCurSen= PTHREAD_MUTEX_INITIALIZER;//
-pthread_mutex_t mutexTasksToServer= PTHREAD_MUTEX_INITIALIZER;//
+pthread_mutex_t mutexCurSen= PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t mutexTasksToServer= PTHREAD_MUTEX_INITIALIZER;
+
 char diretorio[200];
 int nTasksToServer=0;
 int nTasks=0;
 int nCurrentOrRecentTasksRecv=0;
 int nCurrentOrRecentTasksSended=0;
+
 struct Task{
     notification_t notification;
     time_t  time;
     int executing;
-
 };
 
 struct Task *pendingTasks;
@@ -79,6 +73,7 @@ void insertTaskToEnd(
 time_t obterTempoAtual() {
     return time(NULL);
 }
+
 int getIndex(struct Task **tasks, int *nTasks, const char *fileName, const char *ancientFileName, notification_type_t type, int executing) {
     for (int i = 0; i < *nTasks; i++) {
         // Verifica o nome do arquivo
@@ -199,7 +194,6 @@ void filterTasksAux(struct Task *Tasks, int *nTasks) {
     }
 }
 
-
 void filterTasks(struct Task *Tasks, int *nTasks) {
     int i = 0;
     while (i < *nTasks) {
@@ -262,7 +256,7 @@ void* get_server_tasks_thread_function(void* arg) {
     while (client_info.running) {
         usleep(300000);  // Aguardar meio segundo (500 milissegundos)
         pthread_mutex_lock(&mutex);
-        int num_notifications = receiveLastSecondNotificationFromServer(notifications, client_info.sync_dir_path,client_info.server_port, client_info.server_ip);
+        int num_notifications = receiveLastSecondNotificationFromServer(notifications, client_info.sync_dir_path, client_info.server_port, client_info.server_ip);
 
         insertNewTasks(notifications, num_notifications, &pendingTasks, &nTasks);
         
@@ -355,13 +349,13 @@ void* process_local_task_thread_function(void* arg) {
             struct Task task= pendingTasks[0];
             pthread_mutex_unlock(&mutex);
             switch (task.notification.type){
-                case 0:
+                case UPDATED_FILE:
                     updateFile(task.notification.fileName);
                     break;
-                case 1:
+                case RENAMED_FILE:
                     renameFile(task.notification.fileName,task.notification.ancientFileName);
                     break;
-                case 2:
+                case REMOVED_FILE:
                     deleteFile(task.notification.fileName);
                     break;
                 
@@ -447,7 +441,7 @@ void removeFileServer(char * nome_arquivo){
     pthread_mutex_lock(& mutexCurSen);
     insertTaskToEnd(&currentOrRecentTasksSended, &nCurrentOrRecentTasksSended, nome_arquivo, "", REMOVED_FILE, 1);
     pthread_mutex_unlock(& mutexCurSen);
-    removeFileInServer(nome_arquivo,client_info.sync_dir_path,client_info.server_port,client_info.server_ip);
+    removeFileInServer(nome_arquivo,client_info.sync_dir_path, client_info.server_port,client_info.server_ip);
 
     pthread_mutex_lock(& mutexCurSen);
     int j=getIndex(&currentOrRecentTasksSended, &nCurrentOrRecentTasksSended, nome_arquivo, "", REMOVED_FILE, 1);
@@ -466,7 +460,7 @@ void renameFileServer(char * nome_arquivo_novo,char * nome_arquivo_antigo){
     insertTaskToEnd(&currentOrRecentTasksSended, &nCurrentOrRecentTasksSended, nome_arquivo_novo, nome_arquivo_antigo, RENAMED_FILE, 1);
     pthread_mutex_unlock(& mutexCurSen);
 
-    updateFileName(nome_arquivo_novo,nome_arquivo_antigo,client_info.sync_dir_path,client_info.server_port,  client_info.server_ip);
+    updateFileName(nome_arquivo_novo,nome_arquivo_antigo,client_info.sync_dir_path, client_info.server_port,  client_info.server_ip);
 
     pthread_mutex_lock(& mutexCurSen);
     int j=getIndex(&currentOrRecentTasksSended, &nCurrentOrRecentTasksSended, nome_arquivo_novo, nome_arquivo_antigo, RENAMED_FILE, 1);
@@ -893,7 +887,6 @@ int main(int argc, char *argv[]) {
     strncpy(client_info.server_ip, argv[2], sizeof(client_info.server_ip));
     client_info.server_port = atoi(argv[3]);
     client_info.running = 1;
-
     
     //iniciaDiretorioCliente();
     // Inicializa o diretório de sincronização
