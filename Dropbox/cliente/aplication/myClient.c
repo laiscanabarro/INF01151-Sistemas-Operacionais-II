@@ -1,14 +1,4 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
-#include <arpa/inet.h>
-#include <time.h>
-#include "../comunication/comunicationClient.h"
-#include <dirent.h>   
-#include <sys/types.h> 
-#include <pthread.h>
-#include <sys/stat.h>
+#include "../comunication/comunicationClient.h" 
 
 #define MAX_COMMAND_SIZE 1024
 #define MAX_PATH_SIZE 500

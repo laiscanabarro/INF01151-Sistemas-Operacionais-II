@@ -1,11 +1,5 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
-#include <arpa/inet.h>
-#include <pthread.h>
-#include <dirent.h>
 #include "../comunication/comunicationServer.h"
+
 #define PORTA 8080
 #define TAMANHO_BUFFER 1024
 

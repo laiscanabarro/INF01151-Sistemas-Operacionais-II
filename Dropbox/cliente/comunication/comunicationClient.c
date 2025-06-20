@@ -1,9 +1,3 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
-#include <dirent.h> 
-#include <arpa/inet.h>
 #include "comunicationClient.h"
 
 int sendNewFileToServer(char *nomeArquivo,char *diretorio,int PORTA,char * IP){

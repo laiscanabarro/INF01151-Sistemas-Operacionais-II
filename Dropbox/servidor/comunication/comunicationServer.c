@@ -1,13 +1,4 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
-#include <arpa/inet.h>
-#include <dirent.h>
-#include <time.h>
-#include <pthread.h>
 #include "comunicationServer.h"
-#include <sys/stat.h>
 
 #define MAX_NOTIFICATIONS 1024
 
