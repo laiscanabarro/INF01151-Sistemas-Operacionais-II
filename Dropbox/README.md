@@ -2,7 +2,7 @@
 
 ## Como compilar o projeto
 
-Navegue até o diretório raiz do projeto (onde `common.c` e `common.h` estão localizados).
+Navegue até o diretório raiz do projeto (onde `common.h` está localizado).
 Execute os seguintes comandos para compilar o servidor e o cliente:
 
 ### Compilação do servidor
