@@ -24,13 +24,20 @@ gcc -o client cliente/aplication/myClient.c \
 ### 1. Iniciar o servidor
 
 ```bash
-./server <port>
+./server <port> <my_rm_id>
 ```
 
-### Exemplo:
+### Exemplo 1:
 
 ```bash
-./server 8080
+./server 8080 1
+```
+
+### Exemplo 2: rodando múltiplos servers
+```bash
+./server 8080 1
+./server 8081 2
+./server 8082 3
 ```
 
 ### 2. Iniciar o(s) cliente(s)
