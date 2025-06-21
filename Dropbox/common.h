@@ -59,10 +59,10 @@ typedef enum {
 
 // Estrutura para representar um Replica Manager (RM)
 typedef struct rm_info {
-    int id;               // ID único do RM (quanto maior, mais "valentão")
-    char ip[16];          // Endereço IP do RM
-    int port;             // Porta do RM
-    int is_active;        // 0 se inativo/falhou, 1 se ativo
+    int id;
+    char ip[16];
+    int port;
+    int is_active;      
 } rm_info;
 
 // Novo payload para mensagens de eleição/coordenador
@@ -71,13 +71,6 @@ typedef struct election_message_payload {
     int sender_id;                            // ID do processo que enviou a mensagem
     int leader_id;                            // ID do novo líder (apenas para CMD_COORDINATOR)
 } election_message_payload;
-
-typedef struct rm_info {
-    int id;
-    char ip[16];
-    int port;
-} rm_info;
-
 
 #define MAX_RMS 5 // Até 5 servidores no cluster (uso de exemplo no momento)
 extern rm_info all_rms[MAX_RMS];

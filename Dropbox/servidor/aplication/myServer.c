@@ -141,7 +141,7 @@ void handle_election_message(int novo_socket, election_message_payload payload) 
         case CMD_ELECTION:
             // Envia uma resposta se meu ID for maior
             if (my_rm_id > payload.sender_id) {
-                send_ok_message(all_rms[payload.sender_id -1].ip, all_rms[payload.sender_id -1].port, my_rm_id);
+                send_answer_message(all_rms[payload.sender_id -1].ip, all_rms[payload.sender_id -1].port, my_rm_id);
                 // Se eu ainda não estivesse em uma eleição, comece uma
                 if (!election_in_progress) {
                     election_in_progress = 1;
