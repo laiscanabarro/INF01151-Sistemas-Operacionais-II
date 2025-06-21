@@ -194,15 +194,18 @@ void *handle_client(void *args) {
         pthread_exit(NULL);
     }
 
-    if (received_code >= CMD_ELECTION || received_code == CMD_WHO_IS_LEADER) {
+    if ((received_code >= CMD_ELECTION && received_code <= CMD_HEARTBEAT) || received_code == CMD_WHO_IS_LEADER) {
         if (received_code == CMD_WHO_IS_LEADER) {
             handle_who_is_leader_query(novo_socket);
         } else {
             election_message_payload payload;
             payload.election_cmd_type = (election_command_type_t)received_code;
 
-            if (recv(novo_socket, &payload, sizeof(election_message_payload), 0) <= 0) {
-                perror("Erro ao receber payload da mensagem de eleição");
+            size_t size_of_cmd_type = sizeof(int); 
+            size_t remaining_payload_size = sizeof(election_message_payload) - size_of_cmd_type;
+
+            if (recv(novo_socket, ((char*)&payload) + size_of_cmd_type, remaining_payload_size, 0) <= 0) {
+                perror("Erro ao receber o restante do payload da mensagem de eleição");
                 free(args);
                 close(novo_socket);
                 pthread_exit(NULL);

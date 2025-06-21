@@ -563,14 +563,6 @@ int send_election_message_internal(const char* ip, int port, election_message_pa
         return -1;
     }
 
-    // Envie o tipo de comando de eleição
-    int command = (int)payload.election_cmd_type;
-    if (send(sock, &command, sizeof(int), 0) < 0) {
-        perror("Falha ao enviar tipo de comando");
-        close(sock);
-        return -1;
-    }
-
     // Envia a payload
     if (send(sock, &payload, sizeof(election_message_payload), 0) < 0) {
         perror("Falha ao enviar payload");
