@@ -29,6 +29,29 @@ struct Task *pendingTasksToServer;
 struct Task *currentOrRecentTasksRecv;
 struct Task *currentOrRecentTasksSended;
 
+rm_info known_rms[MAX_RMS];
+int num_known_rms = 0;
+
+// Função para tentar descobrir o líder 
+int discover_leader() {
+    // Tenta cada RM conhecido
+    for (int i = 0; i < num_known_rms; i++) {
+        // Criar função aqui para perguntar quem é o líder
+        int leader_id_response = -1;
+        // TODO: Implementat ask_who_is_leader_comm
+        if (ask_who_is_leader_comm(known_rms[i].ip, known_rms[i].port, &leader_id_response) == 0) {
+            if (leader_id_response != -1) {
+                printf("Cliente: RM %d respondeu que o líder é o RM %d.\n", known_rms[i].id, leader_id_response);
+                return leader_id_response;
+            }
+        }
+    }
+    printf("Cliente: Nao foi possivel descobrir o lider. Todos os RMs conhecidos nao responderam ou nao conhecem o lider.\n");
+    return -1; // Não encontrou o líder
+}
+
+//TODO: Integrar a função de descoberta de líder com o resto do código na main
+
 void insertTaskToEnd(
     struct Task **taskArray,       // Vetor de tarefas
     int *taskCount,                // Número atual de tarefas

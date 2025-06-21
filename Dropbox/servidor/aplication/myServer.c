@@ -12,6 +12,134 @@ typedef struct {
 
 client_list server_clients;
 
+// Variáveis globais para o cluster
+rm_info all_rms[MAX_RMS]; // Definida aqui
+int num_all_rms = 0; // Quantidade de RMs
+int my_rm_id = -1; // ID desta instância do servidor (preenchido no main)
+int current_leader_id = -1; // Líder conhecido (preenchido na eleição)
+pthread_mutex_t leader_mutex = PTHREAD_MUTEX_INITIALIZER; // Protege current_leader_id
+
+// Adicionar um mutex para proteger o estado de eleição
+pthread_mutex_t election_mutex = PTHREAD_MUTEX_INITIALIZER;
+int election_in_progress = 0; // Flag para indicar se uma eleição está em andamento
+int ok_received = 0;          // Flag para saber se recebeu OK de um RM maior
+
+// Thread para enviar e receber heartbeats
+void* heartbeat_thread(void* arg) {
+    // Implementar lógica de heartbeat aqui
+    // Se for o primário: envia heartbeats para todos os backups.
+    // Se for um backup: espera heartbeats do primário. Se não receber, inicia eleição.
+    // Se for um backup: envia heartbeats para o primário.
+    while (1) {
+        usleep(1000000);
+        pthread_mutex_lock(&leader_mutex);
+        int leader = current_leader_id;
+        pthread_mutex_unlock(&leader_mutex);
+
+        if (my_rm_id == leader) { // Sou o líder
+            // Enviar heartbeats para todos os backups
+            for (int i = 0; i < num_all_rms; i++) {
+                if (all_rms[i].id != my_rm_id && all_rms[i].id != leader) { // Não sou eu e não é o líder
+                    // Tentar enviar um heartbeat para all_rms[i]
+                    // Se falhar para algum backup, não é crítico.
+                    // Para replicação passiva, o líder sempre tenta se comunicar com backups.
+                }
+            }
+        } else { // Sou um backup
+            // Tentar enviar heartbeat para o líder.
+            // Se o líder não responder após N tentativas, iniciar eleição.
+            rm_info leader_info;
+            int found_leader = 0;
+            for(int i = 0; i < num_all_rms; i++) {
+                if(all_rms[i].id == leader) {
+                    leader_info = all_rms[i];
+                    found_leader = 1;
+                    break;
+                }
+            }
+
+            if (found_leader && leader_info.id != my_rm_id) { // Se o líder não sou eu
+                // Tenta enviar um heartbeat para o líder
+                if (send_heartbeat_to_rm(leader_info.ip, leader_info.port, my_rm_id) < 0) {
+                    // Falha no heartbeat para o líder
+                    // Iniciar Eleição (se já não estiver uma em andamento)
+                    pthread_mutex_lock(&election_mutex);
+                    if (!election_in_progress) {
+                        printf("Líder %d falhou! Iniciando eleição...\n", leader);
+                        election_in_progress = 1;
+                        ok_received = 0; // Reset para a nova eleição
+                        pthread_mutex_unlock(&election_mutex);
+                        start_election(); // Chama a função para iniciar a eleição
+                    } else {
+                        pthread_mutex_unlock(&election_mutex);
+                    }
+                }
+            } else if (leader == -1 || leader == my_rm_id) {
+                // Se não há líder conhecido ou se eu sou o líder (mas não me enviei heartbeat)
+                // Isto é para cenários onde um RM se inicia ou detecta que não há líder.
+                 pthread_mutex_lock(&election_mutex);
+                 if (!election_in_progress) {
+                    printf("Nenhum líder conhecido ou líder falhou, iniciando eleição...\n");
+                    election_in_progress = 1;
+                    ok_received = 0;
+                    pthread_mutex_unlock(&election_mutex);
+                    start_election();
+                 } else {
+                    pthread_mutex_unlock(&election_mutex);
+                 }
+            }
+        }
+    }
+    return NULL;
+}
+
+// Função para iniciar o algoritmo de Bully
+void start_election() {
+    pthread_mutex_lock(&election_mutex);
+    election_in_progress = 1;
+    ok_received = 0;
+    pthread_mutex_unlock(&election_mutex);
+
+    int higher_rm_found = 0;
+    for (int i = 0; i < num_all_rms; i++) {
+        if (all_rms[i].id > my_rm_id) { // Envia mensagem de eleição para RMs com ID maior
+            if (send_election_message(all_rms[i].ip, all_rms[i].port, my_rm_id) == 0) {
+                higher_rm_found = 1; // Encontrou um RM maior e conseguiu enviar
+            }
+        }
+    }
+
+    if (!higher_rm_found) { // Se não encontrou nenhum RM maior ou todos falharam
+        // Eu sou o maior ID entre os ativos, me declaro coordenador
+        pthread_mutex_lock(&leader_mutex);
+        current_leader_id = my_rm_id;
+        pthread_mutex_unlock(&leader_mutex);
+
+        printf("Eu (RM %d) sou o novo líder!\n", my_rm_id);
+        // Anunciar para todos os outros RMs que eu sou o coordenador
+        for (int i = 0; i < num_all_rms; i++) {
+            if (all_rms[i].id != my_rm_id) {
+                send_coordinator_message(all_rms[i].ip, all_rms[i].port, my_rm_id);
+            }
+        }
+        pthread_mutex_lock(&election_mutex);
+        election_in_progress = 0; // Eleição finalizada
+        pthread_mutex_unlock(&election_mutex);
+
+    } else {
+        // Espere por OK ou Coordinator (implementado na função handle_client_thread para mensagens recebidas)
+        // Se receber OK, minha eleição para. Se não receber nada após timeout, assumo que os maiores falharam e inicio novamente.
+        // Implementação de timeout pode ser mais complexa (thread separada ou semaforos/condvars)
+    }
+}
+
+// TODO:
+// Função para lidar com mensagens de eleição recebidas
+// Fazer função para lidar com mensagens OK recebidas
+// Fazer função para lidar com mensagens de Coordenador recebidas
+// Integrar tudo isso na função handle_client
+// Integrar a thread de heartbeat com o resto do código na main
+
 // Função que será executada por cada thread
 void *handle_client(void *args) {
     ThreadArgs *threadArgs = (ThreadArgs *)args;

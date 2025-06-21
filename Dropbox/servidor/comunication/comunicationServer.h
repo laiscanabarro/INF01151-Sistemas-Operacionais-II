@@ -38,4 +38,10 @@ void obterListaArquivos(char *diretorio, char ***arquivos, int *nArquivos);
 void filterNotifications(notification_t *notifications, int *num_notifications);
 int get_connected_devices(const char* username);
 
+// TODO:
+//int send_election_message(const char* ip, int port, int sender_id) 
+//int send_ok_message(int client_socket_fd, int sender_id) 
+//int send_coordinator_message(const char* ip, int port, int leader_id) 
+//int send_heartbeat_to_rm(const char* ip, int port, int sender_id) 
+
 #endif // COMUNICATION_SERVER_H
