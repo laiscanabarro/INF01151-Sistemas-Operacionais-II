@@ -538,3 +538,102 @@ void obterListaArquivos(char *diretorio, char ***arquivos, int *nArquivos) {
     }
     closedir(dir);
 }
+
+// Funções para o algoritmo de Bully
+int send_election_message_internal(const char* ip, int port, election_message_payload payload) {
+    int sock = 0;
+    struct sockaddr_in server_address;
+
+    if ((sock = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
+        perror("Erro ao criar socket");
+        return -1;
+    }
+
+    server_address.sin_family = AF_INET;
+    server_address.sin_port = htons(port);
+
+    if (inet_pton(AF_INET, ip, &server_address.sin_addr) <= 0) {
+        perror("Endereço inválido ou não suportado");
+        close(sock);
+        return -1;
+    }
+
+    if (connect(sock, (struct sockaddr *)&server_address, sizeof(server_address)) < 0) {
+        close(sock);
+        return -1;
+    }
+
+    // Envie o tipo de comando de eleição
+    int command = (int)payload.election_cmd_type;
+    if (send(sock, &command, sizeof(int), 0) < 0) {
+        perror("Falha ao enviar tipo de comando");
+        close(sock);
+        return -1;
+    }
+
+    // Envia a payload
+    if (send(sock, &payload, sizeof(election_message_payload), 0) < 0) {
+        perror("Falha ao enviar payload");
+        close(sock);
+        return -1;
+    }
+    close(sock);
+    return 0;
+}
+
+int send_election_message(const char* ip, int port, int sender_id) {
+    election_message_payload payload;
+    payload.election_cmd_type = CMD_ELECTION;
+    payload.sender_id = sender_id;
+    payload.leader_id = -1; 
+    printf("Enviando ELECTION de RM %d para %s:%d\n", sender_id, ip, port);
+    return send_election_message_internal(ip, port, payload);
+}
+
+int send_answer_message(const char* ip, int port, int sender_id) {
+    election_message_payload payload;
+    payload.election_cmd_type = CMD_ANSWER;
+    payload.sender_id = sender_id;
+    payload.leader_id = -1; 
+    printf("Enviando OK de RM %d para %s:%d\n", sender_id, ip, port);
+    return send_election_message_internal(ip, port, payload);
+}
+
+int send_coordinator_message(const char* ip, int port, int leader_id) {
+    election_message_payload payload;
+    payload.election_cmd_type = CMD_COORDINATOR;
+    payload.sender_id = leader_id; 
+    payload.leader_id = leader_id;
+    printf("Enviando COORDINATOR de RM %d para %s:%d\n", leader_id, ip, port);
+    return send_election_message_internal(ip, port, payload);
+}
+
+int send_heartbeat_to_rm(const char* ip, int port, int sender_id) {
+    election_message_payload payload;
+    payload.election_cmd_type = CMD_HEARTBEAT; 
+    payload.sender_id = sender_id;
+    payload.leader_id = current_leader_id; 
+    return send_election_message_internal(ip, port, payload);
+}
+
+int send_leader_is_message(int client_socket_fd, int leader_id) {
+    election_message_payload payload;
+    payload.election_cmd_type = CMD_LEADER_IS;
+    payload.sender_id = my_rm_id; 
+    payload.leader_id = leader_id;
+    printf("Enviando LEADER_IS (Lider: %d) para o cliente %d\n", leader_id, client_socket_fd);
+
+    if (send(client_socket_fd, &payload, sizeof(election_message_payload), 0) < 0) {
+        perror("Send LEADER_IS payload failed");
+        return -1;
+    }
+    return 0;
+}
+
+int handle_who_is_leader_query(int client_socket_fd) {
+    pthread_mutex_lock(&leader_mutex);
+    int leader = current_leader_id;
+    pthread_mutex_unlock(&leader_mutex);
+
+    return send_leader_is_message(client_socket_fd, leader);
+}

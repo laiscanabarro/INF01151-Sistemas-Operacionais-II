@@ -48,12 +48,14 @@ typedef struct client {
 
 // Tipos de comandos para eleição de Líder
 typedef enum {
-    CMD_ELECTION = 20,    // Mensagem de eleição (ID do proponente)
-    CMD_OK,               // Mensagem de OK (resposta a ELECTION)
+    CMD_ELECTION = 20,    // Mensagem de eleição (inicia a eleição)
+    CMD_ANSWER,           // Mensagem de resposta (resposta a ELECTION)
     CMD_COORDINATOR,      // Mensagem de Coordenador (anuncia o novo líder)
-    CMD_WHO_IS_LEADER,    // Cliente/FE pergunta quem é o líder
-    CMD_LEADER_IS         // Servidor responde quem é o líder
-} election_command_type_t; // Novo enum para diferenciar dos comandos de arquivo
+    CMD_WHO_IS_LEADER,    // Cliente pergunta quem é o líder
+    CMD_LEADER_IS,        // Servidor responde quem é o líder
+    CMD_HEARTBEAT         // Mensagem de heartbeat do líder para backups
+} election_command_type_t; 
+
 
 // Estrutura para representar um Replica Manager (RM)
 typedef struct rm_info {

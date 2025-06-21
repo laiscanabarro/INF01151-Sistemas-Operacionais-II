@@ -11,5 +11,6 @@ int receiveLastSecondNotificationFromServer(notification_t *notification,char *d
 int receiveFileListFromServer(char ***arquivosServidor,char *diretorio,int  PORTA,char * IP);
 void filterNotifications(notification_t *notifications, int *num_notifications);
 int receiveLastSecondLocalNotification(notification_t *notifications, char *diretorio);
+int ask_who_is_leader(const char* ip, int port, int* leader_id_response); 
 
 #endif // COMUNICATION_CLIENT_H

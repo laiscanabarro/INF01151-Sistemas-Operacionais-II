@@ -421,3 +421,50 @@ void filterNotifications(notification_t *notifications, int *num_notifications) 
         }
     }
 }
+
+int ask_who_is_leader(const char* ip, int port, int* leader_id_response) {
+    int sock = 0;
+    struct sockaddr_in server_address;
+
+    if ((sock = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
+        perror("Erro ao criar o socket do cliente");
+        return -1;
+    }
+
+    server_address.sin_family = AF_INET;
+    server_address.sin_port = htons(port);
+
+    if (inet_pton(AF_INET, ip, &server_address.sin_addr) <= 0) {
+        perror("Endereço invalido ou não suportado");
+        close(sock);
+        return -1;
+    }
+
+    if (connect(sock, (struct sockaddr *)&server_address, sizeof(server_address)) < 0) {
+        close(sock);
+        return -1;
+    }
+
+    int command = CMD_WHO_IS_LEADER;
+    if (send(sock, &command, sizeof(int), 0) < 0) {
+        perror("Falha ao enviar tipo de comando CMD_WHO_IS_LEADER");
+        close(sock);
+        return -1;
+    }
+
+    election_message_payload response_payload;
+    if (recv(sock, &response_payload, sizeof(election_message_payload), 0) <= 0) {
+        close(sock);
+        return -1;
+    }
+
+    if (response_payload.election_cmd_type == CMD_LEADER_IS) {
+        *leader_id_response = response_payload.leader_id;
+        close(sock);
+        return 0; 
+    } else {
+        printf("Cliente recebeu um tipo de resposta inesperado: %d\n", response_payload.election_cmd_type);
+        close(sock);
+        return -1;
+    }
+}

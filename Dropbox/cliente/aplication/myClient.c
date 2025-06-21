@@ -32,25 +32,23 @@ struct Task *currentOrRecentTasksSended;
 rm_info known_rms[MAX_RMS];
 int num_known_rms = 0;
 
-// Função para tentar descobrir o líder 
+// Função para tentar descobrir o líder
 int discover_leader() {
     // Tenta cada RM conhecido
     for (int i = 0; i < num_known_rms; i++) {
-        // Criar função aqui para perguntar quem é o líder
         int leader_id_response = -1;
-        // TODO: Implementat ask_who_is_leader_comm
-        if (ask_who_is_leader_comm(known_rms[i].ip, known_rms[i].port, &leader_id_response) == 0) {
+        printf("Cliente: Perguntando ao RM %d (%s:%d) quem é o líder...\n", known_rms[i].id, known_rms[i].ip, known_rms[i].port);
+        if (ask_who_is_leader(known_rms[i].ip, known_rms[i].port, &leader_id_response) == 0) {
             if (leader_id_response != -1) {
                 printf("Cliente: RM %d respondeu que o líder é o RM %d.\n", known_rms[i].id, leader_id_response);
                 return leader_id_response;
             }
         }
     }
+    // Não encontrou o líder
     printf("Cliente: Nao foi possivel descobrir o lider. Todos os RMs conhecidos nao responderam ou nao conhecem o lider.\n");
-    return -1; // Não encontrou o líder
+    return -1; 
 }
-
-//TODO: Integrar a função de descoberta de líder com o resto do código na main
 
 void insertTaskToEnd(
     struct Task **taskArray,       // Vetor de tarefas
@@ -801,6 +799,7 @@ void delete_file(const char *filename) {
         printf("Arquivo %s não encontrado localmente.\n", filename);
     }
 }
+
 // Função que processa os comandos do usuário
 void process_command(char *command) {
     char cmd[MAX_COMMAND_SIZE];
@@ -888,7 +887,8 @@ void *command_thread_function(void *arg) {
     
     printf("Thread de comandos encerrada.\n");
     return NULL;
-}   
+}  
+
 int main(int argc, char *argv[]) {
      if (argc != 4) {
         printf("Uso: %s <username> <server_ip> <port>\n", argv[0]);

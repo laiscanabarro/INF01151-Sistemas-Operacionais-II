@@ -36,12 +36,12 @@ int receiveLastSecondLocalNotification(notification_t *notification, char *diret
 int sendFileListToClient(int novo_socket, char *diretorio);
 void obterListaArquivos(char *diretorio, char ***arquivos, int *nArquivos);
 void filterNotifications(notification_t *notifications, int *num_notifications);
-int get_connected_devices(const char* username);
 
-// TODO:
-//int send_election_message(const char* ip, int port, int sender_id) 
-//int send_ok_message(int client_socket_fd, int sender_id) 
-//int send_coordinator_message(const char* ip, int port, int leader_id) 
-//int send_heartbeat_to_rm(const char* ip, int port, int sender_id) 
+// Funções para o algoritmo de Bully
+int send_election_message(const char* ip, int port, int sender_id);
+int send_answer_message(const char* ip, int port, int sender_id);
+int send_coordinator_message(const char* ip, int port, int leader_id);
+int send_heartbeat_to_rm(const char* ip, int port, int sender_id);
+int handle_who_is_leader_query(int client_socket_fd); 
 
 #endif // COMUNICATION_SERVER_H
