@@ -12,60 +12,68 @@ typedef struct {
 
 client_list server_clients;
 
-// Variáveis globais para o cluster
-rm_info all_rms[MAX_RMS]; 
-int num_all_rms = 0; // Quantidade de RMs
-int my_rm_id = -1; // ID desta instância do servidor (preenchido no main)
-int current_leader_id = -1; // Líder conhecido (preenchido na eleição)
+// ---- [ELEIÇÃO DE LÍDER - início da seção] ----
 
+// Variáveis globais para o cluster
+rm_info all_rms[MAX_RMS];           // Lista de todos os RMs (preenchido no main)
+int num_all_rms = 0;                // Quantidade de RMs (preenchido no main)
+int my_rm_id = -1;                  // ID desta instância do servidor (preenchido no main)
+int current_leader_id = -1;         // Líder conhecido (preenchido na eleição)
+
+// Mutexes para proteger o estado da eleição e do líder 
 pthread_mutex_t leader_mutex = PTHREAD_MUTEX_INITIALIZER;   // Protege current_leader_id
-pthread_mutex_t election_mutex = PTHREAD_MUTEX_INITIALIZER; // Proteger o estado de eleição
+pthread_mutex_t election_mutex = PTHREAD_MUTEX_INITIALIZER; // Proteger o estado de eleição (flags)
 
 int election_in_progress = 0; // Flag para indicar se uma eleição está em andamento
-int answer_received = 0;      // Flag para saber se recebeu OK de um RM maior
+int answer_received = 0;      // Flag para saber se recebeu resposta de um RM maior durante a eleição
 
 // Função para iniciar o algoritmo de Bully
+// Um RM chama esta função quando detecta uma falha do líder ou quando não há líder conhecido
 void start_election() {
-    pthread_mutex_lock(&election_mutex);
+    pthread_mutex_lock(&election_mutex);    // Bloqueia para manipular as flags de eleição
     election_in_progress = 1;
     answer_received = 0;
-    pthread_mutex_unlock(&election_mutex);
+    pthread_mutex_unlock(&election_mutex);  // Libera o mutex
 
     int higher_rm_found = 0;
+    // Percorre todos os RMs para encontrar aqueles com ID maior
     for (int i = 0; i < num_all_rms; i++) {
-        if (all_rms[i].id > my_rm_id) { // Envia mensagem de eleição para RMs com ID maior
+        // Envia mensagem de eleição para RMs com ID maior
+        if (all_rms[i].id > my_rm_id) { 
+            // send_election_message tenta enviar a mensagem. Retorna 0 em sucesso.
             if (send_election_message(all_rms[i].ip, all_rms[i].port, my_rm_id) == 0) {
                 higher_rm_found = 1; // Encontrou um RM maior e conseguiu enviar
             }
         }
     }
 
-    if (!higher_rm_found) { // Se não encontrou nenhum RM maior ou todos falharam
+    // Se não encontrou nenhum RM maior ou todos os maiores falharam
+    if (!higher_rm_found) { 
         // Eu sou o maior ID entre os ativos, me declaro coordenador
-        pthread_mutex_lock(&leader_mutex);
+        pthread_mutex_lock(&leader_mutex);      // Bloqueia para atualizar o líder
         current_leader_id = my_rm_id;
-        pthread_mutex_unlock(&leader_mutex);
+        pthread_mutex_unlock(&leader_mutex);    // Libera o mutex
 
         printf("Eu (RM %d) sou o novo líder!\n", my_rm_id);
         // Anuncia para todos os outros RMs que eu sou o coordenador
         for (int i = 0; i < num_all_rms; i++) {
-            if (all_rms[i].id != my_rm_id) {
+            if (all_rms[i].id != my_rm_id) { // Não envia para si mesmo
                 send_coordinator_message(all_rms[i].ip, all_rms[i].port, my_rm_id);
             }
         }
         // Eleição finalizada
-        pthread_mutex_lock(&election_mutex);
+        pthread_mutex_lock(&election_mutex);       // Bloqueia para atualizar a flag de eleição
         election_in_progress = 0; 
-        pthread_mutex_unlock(&election_mutex);
+        pthread_mutex_unlock(&election_mutex);     // Libera o mutex
 
     } else {
-        // Espere por OK ou Coordinator (implementado na função handle_client_thread para mensagens recebidas)
-        // Se receber OK, minha eleição para. Se não receber nada após timeout, assumo que os maiores falharam e inicio novamente.
-        // Implementação de timeout pode ser mais complexa (thread separada ou semaforos/condvars)
+        // Se encontrou RMs maiores, o processo atual espera por um ANSWER ou COORDINATOR
+        // A lógica de timeout/recebimento é tratada em 'handle_client' e 'heartbeat_thread'
     }
 }
 
 // Thread para enviar e receber heartbeats
+// Usado para a detecção de falhas do líder e para manter a coesão do cluster
 void* heartbeat_thread(void* arg) {
     // Lógica de heartbeat:
     // Se for um líder: envia heartbeats para todos os backups
@@ -73,22 +81,20 @@ void* heartbeat_thread(void* arg) {
     // Se for um backup: envia heartbeats para o primário
     while (1) {
         usleep(1000000);
-        pthread_mutex_lock(&leader_mutex);
+        pthread_mutex_lock(&leader_mutex);      // Bloqueia para ler o ID do líder
         int leader = current_leader_id;
-        pthread_mutex_unlock(&leader_mutex);
+        pthread_mutex_unlock(&leader_mutex);    // Libera o mutex
 
         if (my_rm_id == leader) { // Sou o líder
-            // Envia heartbeats para todos os backups
+            // Envia heartbeats para todos os backups (ou outros RMs)
             for (int i = 0; i < num_all_rms; i++) {
-                if (all_rms[i].id != my_rm_id && all_rms[i].id != leader) { // Não sou eu e não é o líder
-                    // Tentar enviar um heartbeat para all_rms[i]
-                    // Se falhar para algum backup, não é crítico.
-                    // Para replicação passiva, o líder sempre tenta se comunicar com backups.
+                if (all_rms[i].id != my_rm_id) { // Não sou eu e não é o líder
+                    send_heartbeat_to_rm(all_rms[i].ip, all_rms[i].port, my_rm_id);
                 }
             }
         } else { // Sou um backup
-            // Tentar enviar heartbeat para o líder.
-            // Se o líder não responder após N tentativas, iniciar eleição.
+            // Tentar enviar heartbeat para o líder
+            // Se o líder não responder após N tentativas, iniciar eleição
             rm_info leader_info;
             int found_leader = 0;
             for(int i = 0; i < num_all_rms; i++) {
@@ -99,24 +105,24 @@ void* heartbeat_thread(void* arg) {
                 }
             }
 
-            if (found_leader && leader_info.id != my_rm_id) { // Se o líder não sou eu
-                // Tenta enviar um heartbeat para o líder
+            if (found_leader && leader_info.id != my_rm_id) { // Se o líder é conhecido e não sou eu
+                // Tenta enviar um heartbeat para o líder. Se falhar, o líder pode ter caído
                 if (send_heartbeat_to_rm(leader_info.ip, leader_info.port, my_rm_id) < 0) {
                     // Falha no heartbeat para o líder, então iniciar eleição
-                    pthread_mutex_lock(&election_mutex);
-                    if (!election_in_progress) {
+                    pthread_mutex_lock(&election_mutex);        // Bloqueia para verificar/iniciar eleição
+                    if (!election_in_progress) {                // Se não houver eleição em andamento, inicie uma
                         printf("Líder %d falhou! Iniciando eleição...\n", leader);
                         election_in_progress = 1;
                         answer_received = 0; 
-                        pthread_mutex_unlock(&election_mutex);
-                        start_election(); 
+                        pthread_mutex_unlock(&election_mutex);  // Libera o mutex antes de chamar start_election
+                        start_election();                       // Inicia o processo de eleição
                     } else {
-                        pthread_mutex_unlock(&election_mutex);
+                        pthread_mutex_unlock(&election_mutex);  // Libera o mutex se já houver eleição
                     }
                 }
             } else if (leader == -1 || leader == my_rm_id) {
                 // Se não há líder conhecido ou se eu sou o líder (mas não me enviei heartbeat)
-                // Isto é para cenários onde um RM se inicia ou detecta que não há líder.
+                // Isto é para cenários onde um RM se inicia ou detecta que não há líder
                  pthread_mutex_lock(&election_mutex);
                  if (!election_in_progress) {
                     printf("Nenhum líder conhecido ou líder falhou, iniciando eleição...\n");
@@ -133,12 +139,13 @@ void* heartbeat_thread(void* arg) {
     return NULL;
 }
 
+// Função para lidar com mensagens de eleição recebidas de outros RMs 
 void handle_election_message(int novo_socket, election_message_payload payload) {
-    pthread_mutex_lock(&election_mutex);
+    pthread_mutex_lock(&election_mutex);        // Bloqueia para manipular o estado da eleição
     printf("RM %d recebeu mensagem %d do RM %d\n", my_rm_id, payload.election_cmd_type, payload.sender_id);
 
     switch (payload.election_cmd_type) {
-        case CMD_ELECTION:
+        case CMD_ELECTION:      // Recebeu uma mensagem de ELECTION de um RM com ID menor 
             // Envia uma resposta se meu ID for maior
             if (my_rm_id > payload.sender_id) {
                 send_answer_message(all_rms[payload.sender_id -1].ip, all_rms[payload.sender_id -1].port, my_rm_id);
@@ -146,32 +153,33 @@ void handle_election_message(int novo_socket, election_message_payload payload) 
                 if (!election_in_progress) {
                     election_in_progress = 1;
                     answer_received = 0; 
-                    pthread_mutex_unlock(&election_mutex); 
-                    start_election();
+                    pthread_mutex_unlock(&election_mutex); // Libera o mutex antes de chamar start_election
+                    start_election();                      // Inicia a própria eleição
                     return; 
                 }
             }
             break;
-        case CMD_ANSWER:
-            // Defina a flag como verdadeira, indicando que um RM mais alto está ativo
+        case CMD_ANSWER:        // Recebeu uma mensagem de ANSWER (OK) de um RM com ID maior 
+            // Defina a flag answer_received como verdadeira, indicando que um RM mais alto está ativo
+            // Isso deve fazer com que a eleição atual deste RM seja abortada
             answer_received = 1;
             printf("RM %d recebeu uma ANSWER de RM %d. Abortando eleição.\n", my_rm_id, payload.sender_id);
             break;
-        case CMD_COORDINATOR:
+        case CMD_COORDINATOR:   // Recebeu uma mensagem de COORDINATOR, indicando um novo líder 
             // Reconheça o novo líder
-            pthread_mutex_lock(&leader_mutex);
+            pthread_mutex_lock(&leader_mutex);      // Bloqueia para atualizar o líder
             current_leader_id = payload.leader_id;
-            pthread_mutex_unlock(&leader_mutex);
-            election_in_progress = 0; 
-            answer_received = 
+            pthread_mutex_unlock(&leader_mutex);    // Libera o mutex
+            election_in_progress = 0;               // Eleição terminada
+            answer_received = 0;                    // Reseta a flag de resposta
             printf("RM %d: O novo líder é o RM %d.\n", my_rm_id, current_leader_id);
             break;
-        case CMD_HEARTBEAT:
+        case CMD_HEARTBEAT:    // Recebeu um heartbeat do líder atual
             // Atualizar o líder
-            pthread_mutex_lock(&leader_mutex);
+            pthread_mutex_lock(&leader_mutex);     // Bloqueia para atualizar o líder
             current_leader_id = payload.sender_id; 
-            pthread_mutex_unlock(&leader_mutex);
-            election_in_progress = 0; 
+            pthread_mutex_unlock(&leader_mutex);   // Libera o mutex
+            election_in_progress = 0;              // Se um heartbeat foi recebido, não há necessidade de eleição
             answer_received = 0;
             break;
         default:
@@ -181,12 +189,14 @@ void handle_election_message(int novo_socket, election_message_payload payload) 
     pthread_mutex_unlock(&election_mutex);
 }
 
-// Função que será executada por cada thread
+// Função que será executada por cada thread conectada ao servidor RM
 void *handle_client(void *args) {
     ThreadArgs *threadArgs = (ThreadArgs *)args;
     int novo_socket = threadArgs->socket;
     int received_code;
 
+    // Primeiro, recebe o código do comando inicial
+    // Este código indicará se é uma mensagem de eleição ou uma operação de arquivo
     if (recv(novo_socket, &received_code, sizeof(int), 0) <= 0) {
         perror("Erro ao receber o primeiro código");
         free(args);
@@ -194,27 +204,41 @@ void *handle_client(void *args) {
         pthread_exit(NULL);
     }
 
+    // [ELEIÇÃO DE LÍDER - INÍCIO LÓGICA DE MANUSEIO DE MENSAGENS]
+
+    // Verifica se o código recebido indica uma mensagem relacionada à eleição (com payload)
+    // ou se é uma consulta de "quem é o líder"
     if ((received_code >= CMD_ELECTION && received_code <= CMD_HEARTBEAT) || received_code == CMD_WHO_IS_LEADER) {
-        if (received_code == CMD_WHO_IS_LEADER) {
+        if (received_code == CMD_WHO_IS_LEADER) {   // Caso seja uma consulta do cliente sobre o líder 
+            // Função que lida com a pergunta do cliente "quem é o líder?"
             handle_who_is_leader_query(novo_socket);
         } else {
             election_message_payload payload;
+
+            // O tipo de comando de eleição já foi recebido em 'received_code'
+            // Define o tipo na estrutura de payload local
             payload.election_cmd_type = (election_command_type_t)received_code;
 
+            // Agora, recebe APENAS o restante do payload (sender_id e leader_id). 
+            // Isso assume que election_command_type_t tem o mesmo tamanho de 'int'
+            // e que ele é o primeiro membro da estrutura election_message_payload
             size_t size_of_cmd_type = sizeof(int); 
             size_t remaining_payload_size = sizeof(election_message_payload) - size_of_cmd_type;
 
+            // Recebe os bytes restantes diretamente na memória logo após o campo 'election_cmd_type'.
             if (recv(novo_socket, ((char*)&payload) + size_of_cmd_type, remaining_payload_size, 0) <= 0) {
                 perror("Erro ao receber o restante do payload da mensagem de eleição");
                 free(args);
                 close(novo_socket);
                 pthread_exit(NULL);
             }
+            // Delega o manuseio da mensagem de eleição para a função handle_election_message
             handle_election_message(novo_socket, payload);
         }
         close(novo_socket);
         free(args);
         pthread_exit(NULL);
+    // [ELEIÇÃO DE LÍDER - FIM LÓGICA DE MANUSEIO DE MENSAGENS]
     } else {
         // Recebe o diretorio
         // Envia o nome do diretorio
@@ -327,6 +351,7 @@ int main(int argc, char *argv[]) {
     int port = atoi(argv[1]);
     my_rm_id = atoi(argv[2]); 
 
+    // [ELEIÇÃO DE LÍDER - INICIALIZAÇÃO]
     // Exemplo de inicialização do RM:
     // Isso precisa ser consistente em todas as instâncias do RM
     all_rms[0] = (rm_info){1, "127.0.0.1", 8080, 1};
@@ -341,6 +366,8 @@ int main(int argc, char *argv[]) {
         return 1;
     }
     pthread_detach(hb_thread_id);
+
+    // [ELEIÇÃO DE LÍDER - FIM DA INICIALIZAÇÃO]
   
     // Criação do socket
     int servidor_fd = server_init(port);

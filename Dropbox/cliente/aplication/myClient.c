@@ -29,19 +29,42 @@ struct Task *pendingTasksToServer;
 struct Task *currentOrRecentTasksRecv;
 struct Task *currentOrRecentTasksSended;
 
-rm_info known_rms[MAX_RMS];
-int num_known_rms = 0;
+// [ELEIÇÃO DE LÍDER - início da seção]
+
+rm_info known_rms[MAX_RMS]; // Array para armazenar RMs conhecidos pelo cliente
+int num_known_rms = 0;      // Número de RMs conhecidos
 
 // Função para tentar descobrir o líder
+
+// O cliente itera sobre RMs conhecidos e pergunta quem é o líder
 int discover_leader() {
+    // Inicialização dos RMs conhecidos pelo cliente
+    // Esta parte também pode ser configurável 
+    // Atualmente, está hardcoded aqui, mas deveria vir de uma fonte externa, assim como o servidor
+
+    // Exemplo de inicialização:
+    known_rms[0] = (rm_info){1, "127.0.0.1", 8080, 1};
+    known_rms[1] = (rm_info){2, "127.0.0.1", 8081, 1};
+    known_rms[2] = (rm_info){3, "127.0.0.1", 8082, 1};
+    num_known_rms = 3; 
+
     // Tenta cada RM conhecido
     for (int i = 0; i < num_known_rms; i++) {
         int leader_id_response = -1;
         printf("Cliente: Perguntando ao RM %d (%s:%d) quem é o líder...\n", known_rms[i].id, known_rms[i].ip, known_rms[i].port);
+        // ask_who_is_leader envia a consulta e recebe a resposta do líder.
         if (ask_who_is_leader(known_rms[i].ip, known_rms[i].port, &leader_id_response) == 0) {
             if (leader_id_response != -1) {
                 printf("Cliente: RM %d respondeu que o líder é o RM %d.\n", known_rms[i].id, leader_id_response);
-                return leader_id_response;
+                // Encontrar os dados do líder no array known_rms
+                for (int j = 0; j < num_known_rms; j++) {
+                    if (known_rms[j].id == leader_id_response) {
+                        strncpy(client_info.server_ip, known_rms[j].ip, sizeof(client_info.server_ip));
+                        client_info.server_port = known_rms[j].port;
+                        printf("Cliente: Conectando-se ao líder em %s:%d\n", client_info.server_ip, client_info.server_port);
+                        return leader_id_response; // Retorna o ID do líder encontrado
+                    }
+                }
             }
         }
     }
@@ -49,6 +72,7 @@ int discover_leader() {
     printf("Cliente: Nao foi possivel descobrir o lider. Todos os RMs conhecidos nao responderam ou nao conhecem o lider.\n");
     return -1; 
 }
+// [ELEIÇÃO DE LÍDER - fim da seção]
 
 void insertTaskToEnd(
     struct Task **taskArray,       // Vetor de tarefas
@@ -268,6 +292,17 @@ void* get_server_tasks_thread_function(void* arg) {
         usleep(300000);  // Aguardar meio segundo (500 milissegundos)
         pthread_mutex_lock(&mutex);
         int num_notifications = receiveLastSecondNotificationFromServer(notifications, client_info.sync_dir_path, client_info.server_port, client_info.server_ip);
+
+        // [ELEIÇÃO DE LÍDER - início da seção]
+        // Se `num_notifications` for 0 ou -1 (erro), o cliente pode tentar redescobrir o líder.
+        if (num_notifications < 0) {
+            printf("Erro ao receber notificações do servidor. Tentando redescobrir o líder...\n");
+            discover_leader(); // Tenta encontrar o novo líder
+            // Pode adicionar um pequeno delay aqui para evitar loop rápido em caso de falha persistente.
+            pthread_mutex_unlock(&mutex);
+            continue; // Pula o processamento atual e tenta novamente.
+        }
+        // [ELEIÇÃO DE LÍDER - fim da seção]
 
         insertNewTasks(notifications, num_notifications, &pendingTasks, &nTasks);
         
@@ -900,8 +935,18 @@ int main(int argc, char *argv[]) {
     strncpy(client_info.server_ip, argv[2], sizeof(client_info.server_ip));
     client_info.server_port = atoi(argv[3]);
     client_info.running = 1;
+
+    // [ELEIÇÃO DE LÍDER NO CLIENTE - início da seção]
+    // Antes de qualquer operação, o cliente tenta descobrir qual RM é o líder
+    int leader_found = discover_leader();
+    if (leader_found == -1) {
+        printf("Erro fatal: Nao foi possivel descobrir o lider na inicializacao. Encerrando cliente.\n");
+        return 1; // Encerrar se não conseguir encontrar o líder.
+    }
+    // Agora client_info.server_ip e client_info.server_port contêm as informações do líder
+    // [ELEIÇÃO DE LÍDER NO CLIENTE - fim da seção]
     
-    //iniciaDiretorioCliente();
+    // iniciaDiretorioCliente();
     // Inicializa o diretório de sincronização
     get_sync_dir();
     pthread_t get_server_tasks_thread,process_local_task_thread,

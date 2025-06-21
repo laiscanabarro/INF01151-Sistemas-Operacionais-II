@@ -422,6 +422,10 @@ void filterNotifications(notification_t *notifications, int *num_notifications) 
     }
 }
 
+// [ELEIÇÃO DE LÍDER - início da seção]
+
+// Função para perguntar a um RM quem é o líder
+// Envia uma mensagem CMD_WHO_IS_LEADER e espera um CMD_LEADER_IS em resposta
 int ask_who_is_leader(const char* ip, int port, int* leader_id_response) {
     int sock = 0;
     struct sockaddr_in server_address;

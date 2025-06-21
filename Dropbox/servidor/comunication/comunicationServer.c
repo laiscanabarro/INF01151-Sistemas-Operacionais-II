@@ -539,7 +539,13 @@ void obterListaArquivos(char *diretorio, char ***arquivos, int *nArquivos) {
     closedir(dir);
 }
 
-// Funções para o algoritmo de Bully
+// [ELEIÇÃO DE LÍDER - FUNÇÕES DE COMUNICAÇÃO]
+
+// Funções para o algoritmo de Bully:
+// Estas funções encapsulam o envio de diferentes tipos de mensagens de eleição
+// Elas são chamadas pelos RMs para se comunicar entre si
+
+// Função auxiliar interna para enviar payloads de mensagens de eleição
 int send_election_message_internal(const char* ip, int port, election_message_payload payload) {
     int sock = 0;
     struct sockaddr_in server_address;
@@ -573,6 +579,7 @@ int send_election_message_internal(const char* ip, int port, election_message_pa
     return 0;
 }
 
+// Envia uma mensagem de ELECTION para iniciar o processo de eleição
 int send_election_message(const char* ip, int port, int sender_id) {
     election_message_payload payload;
     payload.election_cmd_type = CMD_ELECTION;
@@ -582,6 +589,7 @@ int send_election_message(const char* ip, int port, int sender_id) {
     return send_election_message_internal(ip, port, payload);
 }
 
+// Envia uma mensagem de ANSWER (OK) em resposta a uma ELECTION
 int send_answer_message(const char* ip, int port, int sender_id) {
     election_message_payload payload;
     payload.election_cmd_type = CMD_ANSWER;
@@ -591,6 +599,7 @@ int send_answer_message(const char* ip, int port, int sender_id) {
     return send_election_message_internal(ip, port, payload);
 }
 
+// Envia uma mensagem de COORDINATOR para anunciar o novo líder
 int send_coordinator_message(const char* ip, int port, int leader_id) {
     election_message_payload payload;
     payload.election_cmd_type = CMD_COORDINATOR;
@@ -600,6 +609,7 @@ int send_coordinator_message(const char* ip, int port, int leader_id) {
     return send_election_message_internal(ip, port, payload);
 }
 
+// Envia uma mensagem de HEARTBEAT para confirmar que o líder está ativo
 int send_heartbeat_to_rm(const char* ip, int port, int sender_id) {
     election_message_payload payload;
     payload.election_cmd_type = CMD_HEARTBEAT; 
@@ -608,6 +618,7 @@ int send_heartbeat_to_rm(const char* ip, int port, int sender_id) {
     return send_election_message_internal(ip, port, payload);
 }
 
+// Envia uma mensagem CMD_LEADER_IS em resposta a uma consulta CMD_WHO_IS_LEADER
 int send_leader_is_message(int client_socket_fd, int leader_id) {
     election_message_payload payload;
     payload.election_cmd_type = CMD_LEADER_IS;
@@ -622,6 +633,7 @@ int send_leader_is_message(int client_socket_fd, int leader_id) {
     return 0;
 }
 
+// Lida com a consulta de um cliente 'Quem é o líder?'
 int handle_who_is_leader_query(int client_socket_fd) {
     pthread_mutex_lock(&leader_mutex);
     int leader = current_leader_id;

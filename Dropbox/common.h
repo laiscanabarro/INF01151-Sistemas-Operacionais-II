@@ -45,6 +45,7 @@ typedef struct client {
     int server_port;
 } client;
 
+// ---- [ELEIÇÃO DE LÍDER - início das definições] ----
 
 // Tipos de comandos para eleição de Líder
 typedef enum {
@@ -55,7 +56,6 @@ typedef enum {
     CMD_LEADER_IS,        // Servidor responde quem é o líder
     CMD_HEARTBEAT         // Mensagem de heartbeat do líder para backups
 } election_command_type_t; 
-
 
 // Estrutura para representar um Replica Manager (RM)
 typedef struct rm_info {
@@ -78,6 +78,8 @@ extern int num_all_rms; // Quantidade real de RMs
 
 extern int my_rm_id; // ID desta instância do servidor
 extern int current_leader_id; // ID do líder atualmente conhecido
-extern pthread_mutex_t leader_mutex; // Mutex para proteger o acesso ao ID do líder
+extern pthread_mutex_t leader_mutex; // Mutex para proteger o acesso ao ID do 
+
+// ---- [ELEIÇÃO DE LÍDER - fim das definições] ----
 
 #endif // COMMON_H
