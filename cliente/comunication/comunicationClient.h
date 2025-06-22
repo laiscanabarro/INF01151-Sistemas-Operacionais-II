@@ -25,12 +25,15 @@ typedef enum {
     CMD_LEADER_IS,        // Servidor responde quem é o líder
     CMD_HEARTBEAT         // Mensagem de heartbeat do líder para backups
 } election_command_type_t; 
+
 // Novo payload para mensagens de eleição/coordenador
 typedef struct election_message_payload {
-    election_command_type_t election_cmd_type; // Tipo de comando de eleição
-    int sender_id;                            // ID do processo que enviou a mensagem
-    int leader_id;                            // ID do novo líder (apenas para CMD_COORDINATOR)
+    election_command_type_t election_cmd_type;  // Tipo de comando de eleição
+    int sender_id;                              // ID do processo que enviou a mensagem
+    int leader_id;                              // ID do novo líder (apenas para CMD_COORDINATOR)
+    char leader_ip[16];                         // IP do líder (para CMD_COORDINATOR e CMD_LEADER_IS)
 } election_message_payload;
+
 int sendNewFileToServer(char *nomeArquivo,char *diretorio,int PORTA, char * IP,char *nome_cliente,char *IP_cliente);
 int removeFileInServer(char *nomeArquivo,char *diretorio,int PORTA, char * IP,char *nome_cliente,char *IP_cliente);
 int updateFileName(char *novoNovo,char *nomeAntigo,char *diretorio,int PORTA, char * IP,char *nome_cliente,char *IP_cliente);
@@ -40,6 +43,3 @@ int receiveFileListFromServer(char ***arquivosServidor,char *diretorio,int  PORT
 void filterNotifications(notification_t *notifications, int *num_notifications);
 int receiveLastSecondLocalNotification(notification_t *notifications, char *diretorio);
 int exitConnectionOnServer(int PORTA, char * IP,char *nome_cliente,char *IP_cliente);
-//int receiveLastSessionNotificationFromServer(notification_t *notification, int PORTA, char *IP);
-
-

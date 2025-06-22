@@ -2,6 +2,11 @@
 #include <time.h>
 #include <pthread.h>
 
+// Declaração de variáveis globais (uso de extern)
+#define MAX_RMS 5 // Até 5 servidores no cluster (uso de exemplo no momento)
+#define MAX_OPERATIONS 300
+#define MAX_CLIENTES 200
+
 typedef enum {
     SERVER,      
     CLIENT,    
@@ -20,10 +25,6 @@ typedef struct {
     char ancientFileName[200];     // Nome anterior, se houve mudança
     notification_type_t type;      // Tipo da notificação
 } notification_t;
-
-
-
-
 
 // Estrutura para representar um Replica Manager (RM)
 typedef struct rm_info {
@@ -51,18 +52,20 @@ typedef enum {
     CMD_LEADER_IS,        // Servidor responde quem é o líder
     CMD_HEARTBEAT         // Mensagem de heartbeat do líder para backups
 } election_command_type_t; 
+
 // Novo payload para mensagens de eleição/coordenador
 typedef struct election_message_payload {
     election_command_type_t election_cmd_type; // Tipo de comando de eleição
     int sender_id;                            // ID do processo que enviou a mensagem
     int leader_id;                            // ID do novo líder (apenas para CMD_COORDINATOR)
+    char leader_ip[16];                         // IP do líder (para CMD_COORDINATOR e CMD_LEADER_IS)
 } election_message_payload;
 typedef struct {
     char nome_cliente[100];
     int num_devices_conected;
     char IP_devices [2][16];
 } clientInfo_t;
-#define MAX_RMS 5 // Até 5 servidores no cluster (uso de exemplo no momento)
+
 extern rm_info all_rms[MAX_RMS];
 extern int num_all_rms; // Quantidade real de RMs
 
@@ -70,13 +73,8 @@ extern int my_rm_id; // ID desta instância do servidor
 extern int current_leader_id; // ID do líder atualmente conhecido
 extern pthread_mutex_t leader_mutex; // Mutex para proteger o acesso ao ID do 
 
-// Declaração de variáveis globais (uso de extern)
-#define MAX_OPERATIONS 300
-#define MAX_CLIENTES 200
-
 extern int nOperations;
 extern operationEntry_t actualOperations[MAX_OPERATIONS];
-
 
 // Declaração das funções
 int receiveNewFileFromClient(int novo_socket, char *diretorio, pthread_mutex_t *conflitOperations,rm_info all_rms [],int num_all_rms,int leader_id,char *nome_cliente,char *IP_cliente);
@@ -91,11 +89,9 @@ void obterListaArquivos(char *diretorio, char ***arquivos, int *nArquivos);
 void filterNotifications(notification_t *notifications, int *num_notifications);
 
 void replicateConnecitonOnBackups(rm_info all_rms [],int num_all_rms,int leader_id,char *nome_cliente,char *IP_cliente);
-
 void replicateSendNewFileToBackups(rm_info all_rms [],int num_all_rms,int leader_id, char *fileName, char *directory, int port, char *nome_cliente, char *IP_cliente);
 void replicateRemoveFileOnBackups(rm_info all_rms [], int num_all_rms,int leader_id,char *fileName, char *directory, int port, char *nome_cliente, char *IP_cliente);
 void replicateUpdateFileNameOnBackups(rm_info all_rms [], int num_all_rms,int leader_id,char *newName, char *oldName, char *directory,int port, char *nome_cliente, char *IP_cliente);
-
 
 int sendNewFileToServerBackups(char *nomeArquivo,char *diretorio,int PORTA, char * IP,char *nome_cliente,char *IP_cliente);
 int removeFileInServerBackups(char *nomeArquivo,char *diretorio,int PORTA, char * IP,char *nome_cliente,char *IP_cliente);

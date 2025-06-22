@@ -8,17 +8,16 @@
 #include <sys/time.h>
 #include <arpa/inet.h>
 #include <time.h>
-#include "../comunication/comunicationClient.h"
-#include <dirent.h>   // Para manipulação de diretórios
-#include <sys/types.h> // Para tipos como DIR
+#include <dirent.h>   
+#include <sys/types.h> 
 #include <pthread.h>
-#include <semaphore.h>  // Para usar sem_t, sem_init, sem_wait, sem_post
+#include <semaphore.h>  
+#include <sys/stat.h>
+#include "../comunication/comunicationClient.h"
+
 #define MAX_COMMAND_SIZE 1024
 #define MAX_PATH_SIZE 500
-#define PORTA_HEARTBEAT 9000   // Porta que o cliente vai escutar o heartbeat
-int sockfd_heartbeat = -1;      // Socket servidor, criado uma vez só
-int connfd_heartbeat = -1;      // Socket da conexão atual com o primário
-pthread_mutex_t  heartbeat_mutex=PTHREAD_MUTEX_INITIALIZER;//
+#define PORTA_HEARTBEAT 9000       
 typedef struct {
     char username[50];
     char sync_dir_path[MAX_PATH_SIZE];
@@ -27,18 +26,24 @@ typedef struct {
     int server_port;
     int running;
 } client_info_t;
-time_t ultimo_heartbeat=0;
-sem_t semaforo_conexao_primario;  // Semáforo usado para travar/destravar threads
 
-int isConnected = 1;  // 1 = primário disponível, 0 = falhou ou desconectado
+time_t ultimo_heartbeat=0;
+sem_t semaforo_conexao_primario;  
+
+int isConnected = 1;  
 client_info_t client_info;
 
+int sockfd_heartbeat = -1;      
+int connfd_heartbeat = -1; 
+
 // Definição e inicialização do mutex (uma única vez)
-pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;//
-pthread_mutex_t mutex3 = PTHREAD_MUTEX_INITIALIZER;//
+pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t mutex3 = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t mutex5 = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t mutexCurSen= PTHREAD_MUTEX_INITIALIZER;//
-pthread_mutex_t mutexTasksToServer= PTHREAD_MUTEX_INITIALIZER;//
+pthread_mutex_t mutexCurSen= PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t mutexTasksToServer= PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t heartbeat_mutex=PTHREAD_MUTEX_INITIALIZER;
+
 char diretorio[200];
 int nTasksToServer=0;
 int nTasks=0;
@@ -50,13 +55,11 @@ struct Task{
     int executing;
 
 };
+
 struct Task *pendingTasks;
 struct Task *pendingTasksToServer;
 struct Task *currentOrRecentTasksRecv;
 struct Task *currentOrRecentTasksSended;
-
-
-
 
 void insertTaskToEnd(
     struct Task **taskArray,       // Vetor de tarefas
@@ -88,12 +91,11 @@ void insertTaskToEnd(
     (*taskCount)++;
 }
 
-
-
 // Função para obter o tempo atual
 time_t obterTempoAtual() {
     return time(NULL);
 }
+
 int getIndex(struct Task **tasks, int *nTasks, const char *fileName, const char *ancientFileName, notification_type_t type, int executing) {
     for (int i = 0; i < *nTasks; i++) {
         // Verifica o nome do arquivo
@@ -109,6 +111,7 @@ int getIndex(struct Task **tasks, int *nTasks, const char *fileName, const char 
     }
     return -1;  // Não encontrado
 }
+
 // Função para inserir novas tarefas no vetor pendingTasks
 void insertNewTasks(notification_t *notifications, int num_notifications, struct Task **pendingTasks, int *nTasks) {
     if (num_notifications <= 0) return;
@@ -150,7 +153,6 @@ void insertNewTasks(notification_t *notifications, int num_notifications, struct
     free(novasTarefas);
 }
 
-
 // Função para obter o tempo atual em formato legível
 void imprimirTempo(time_t tempo) {
     struct tm *tm_info = localtime(&tempo);
@@ -168,6 +170,7 @@ const char* obterNomeNotificacao(notification_type_t tipo) {
         default: return "UNKNOWN";
     }
 }
+
 static void removeTaskAt(struct Task **tasks, int *nTasks, int idx) {
     for (int k = idx; k < *nTasks - 1; k++) {
         (*tasks)[k] = (*tasks)[k + 1];
@@ -213,7 +216,6 @@ void filterTasksAux(struct Task *Tasks, int *nTasks) {
     }
 }
 
-
 void filterTasks(struct Task *Tasks, int *nTasks) {
     int i = 0;
     while (i < *nTasks) {
@@ -251,6 +253,7 @@ void filterTasks(struct Task *Tasks, int *nTasks) {
         }
     }
 }
+
 int isSameNotification(notification_t *a, notification_t *b) {
     return (strcmp(a->fileName, b->fileName) == 0 &&
             strcmp(a->ancientFileName, b->ancientFileName) == 0 &&
@@ -270,7 +273,6 @@ void removeDuplicateTasks(struct Task *tasks1, int *size1, struct Task *tasks2, 
 }
 
 // Função que será executada pela nova thread
-
 void* get_server_tasks_thread_function(void* arg) {
     
     notification_t notifications[300];
@@ -281,54 +283,28 @@ void* get_server_tasks_thread_function(void* arg) {
 
         usleep(300000);  // Aguardar meio segundo (500 milissegundos)
         
-          pthread_mutex_lock(&mutex);
+        pthread_mutex_lock(&mutex);
         int num_notifications = receiveLastSecondNotificationFromServer(notifications, client_info.sync_dir_path,client_info.server_port, client_info.server_ip,client_info.username
         ,client_info.client_ip);
          
-       
-       
         insertNewTasks(notifications, num_notifications, &pendingTasks, &nTasks);
-        
-        
+         
         pthread_mutex_lock(&mutexCurSen);
         removeDuplicateTasks(pendingTasks, &nTasks, currentOrRecentTasksSended, nCurrentOrRecentTasksSended);
         pthread_mutex_unlock(&mutexCurSen);
-        //filtra tarefas repetidas ou que se sobrepoem
-        
+
+        // Filtra tarefas repetidas ou que se sobrepoem
         filterTasks(pendingTasks, &nTasks);
         filterTasksAux(pendingTasks, &nTasks);
         filterTasks(pendingTasks, &nTasks);
-        pthread_mutex_unlock(&mutex);
-        
-        
-        // Imprimir todas as tarefas pendentes
-        /*
-        printf("\n== Lista de Tarefas Pendentes (%d tarefas) ==\n", nTasks);
-        for (int i = 0; i < nTasks; i++) {
-            printf("Arquivo: %s | Tipo: %s", 
-                   pendingTasks[i].notification.fileName, 
-                   obterNomeNotificacao(pendingTasks[i].notification.type));
-
-            if (pendingTasks[i].notification.type == RENAMED_FILE) {
-                printf(" | Nome Anterior: %s", pendingTasks[i].notification.ancientFileName);
-            }
-
-            printf(" | Tempo: ");
-            imprimirTempo(pendingTasks[i].time);
-            printf("\n");
-        }
-        fflush(stdout); */
- // Garantir que a saída seja exibida imediatamente
-       
+        pthread_mutex_unlock(&mutex);       
     }
-    return NULL;
-    
+    return NULL; 
 }
 
 void deleteFile(char * nome_arquivo){
     char caminho_completo[1000];
     snprintf(caminho_completo, sizeof(caminho_completo), "%s/%s", client_info.sync_dir_path, nome_arquivo);
-    // Exemplo de uso
     pthread_mutex_lock(&mutex3);
    
     insertTaskToEnd(&currentOrRecentTasksRecv, &nCurrentOrRecentTasksRecv, nome_arquivo, "", REMOVED_FILE, 1);
@@ -345,9 +321,8 @@ void deleteFile(char * nome_arquivo){
     pthread_mutex_lock(&mutex);
     removeTaskAt(&pendingTasks, &nTasks,0);
     pthread_mutex_unlock(&mutex);
-    
-
 }
+
 void renameFile(char * nome_arquivo_novo,char * nome_arquivo_antigo){
     char caminho_completo_novo[1000];
     snprintf(caminho_completo_novo, sizeof(caminho_completo_novo), "%s/%s", client_info.sync_dir_path, nome_arquivo_novo);
@@ -367,10 +342,9 @@ void renameFile(char * nome_arquivo_novo,char * nome_arquivo_antigo){
     pthread_mutex_lock(&mutex);
     removeTaskAt(&pendingTasks, &nTasks,0);
     pthread_mutex_unlock(&mutex);
-
 }
+
 void updateFile(char * nome_arquivo){
-   
     char caminho_completo[1000];
     snprintf(caminho_completo, sizeof(caminho_completo), "%s/%s", client_info.sync_dir_path, nome_arquivo);
     pthread_mutex_lock(&mutex3);
@@ -388,76 +362,53 @@ void updateFile(char * nome_arquivo){
     removeTaskAt(&pendingTasks, &nTasks,0);
     
     pthread_mutex_unlock(&mutex);
-   
-
 }
 
 void* process_local_task_thread_function(void* arg) {
-    
-    while(client_info.running){
+    while(client_info.running) {
         // Aqui a thread aguarda o semáforo, travando se primário desconectado
         sem_wait(&semaforo_conexao_primario);
         sem_post(&semaforo_conexao_primario);
         
-       
         usleep(100000);
         
         pthread_mutex_lock(&mutex);
         
-        
-        if(nTasks!=0&&getIndex(&currentOrRecentTasksRecv, &nCurrentOrRecentTasksRecv, pendingTasks[0].notification.fileName, pendingTasks[0].notification.ancientFileName,
-        pendingTasks[0].notification.type, 0)==-1){
-          
+        if (nTasks!=0&&getIndex(&currentOrRecentTasksRecv, &nCurrentOrRecentTasksRecv, pendingTasks[0].notification.fileName, pendingTasks[0].notification.ancientFileName,
+        pendingTasks[0].notification.type, 0)==-1) {
             struct Task task= pendingTasks[0];
             pthread_mutex_unlock(&mutex);
-        switch (task.notification.type)
-        {
-        case 0:
-           
-            updateFile(task.notification.fileName);
-            break;
-         case 1:
-            renameFile(task.notification.fileName,task.notification.ancientFileName);
-            break;
-         case 2:
-            deleteFile(task.notification.fileName);
-            break;
-        
-        default:
-            break;
-        }
-        
-        
-
-
-
-        }
-        else{
+            switch (task.notification.type) {
+                case UPDATED_FILE:
+                    updateFile(task.notification.fileName);
+                    break;
+                case RENAMED_FILE:
+                    renameFile(task.notification.fileName,task.notification.ancientFileName);
+                    break;
+                case REMOVED_FILE:
+                    deleteFile(task.notification.fileName);
+                    break;
+                default:
+                    break;
+            }    
+        } else {
             pthread_mutex_unlock(&mutex);
         }
-        
-        
-
-
     }
-    
-
 }
 
 void* get_local_tasks_thread_function(void* arg) {
-    
-    while(client_info.running){
-   // Aqui a thread aguarda o semáforo, travando se primário desconectado
+    while(client_info.running) {
+        // Aqui a thread aguarda o semáforo, travando se primário desconectado
         sem_wait(&semaforo_conexao_primario);
         sem_post(&semaforo_conexao_primario);
-    usleep(500000);
-    notification_t notifications[300];
-    int num_notifications = receiveLastSecondLocalNotification(notifications,client_info.sync_dir_path);
-   
+        usleep(500000);
+
+        notification_t notifications[300];
+        int num_notifications = receiveLastSecondLocalNotification(notifications,client_info.sync_dir_path);
     
-    pthread_mutex_lock(&mutexTasksToServer);
+        pthread_mutex_lock(&mutexTasksToServer);
         insertNewTasks(notifications, num_notifications, &pendingTasksToServer, &nTasksToServer);
-        // Imprimir todas as tarefas pendentes
 
         pthread_mutex_lock(&mutex3);
         removeDuplicateTasks(pendingTasksToServer, &nTasksToServer, currentOrRecentTasksRecv, nCurrentOrRecentTasksRecv);
@@ -466,39 +417,13 @@ void* get_local_tasks_thread_function(void* arg) {
         filterTasks(pendingTasksToServer, &nTasksToServer);
         filterTasksAux(pendingTasksToServer, &nTasksToServer);
         filterTasks(pendingTasksToServer, &nTasksToServer);
-    pthread_mutex_unlock(&mutexTasksToServer);
+        pthread_mutex_unlock(&mutexTasksToServer);
         
-        
-
-       
-        /*
-        // Imprimir todas as tarefas pendentes
-        printf("\n== Lista de Tarefas Pendentes (%d tarefas) ==\n", nTasksToServer);
-        for (int i = 0; i < nTasksToServer; i++) {
-            printf("1 taskToServer %d", nTasksToServer);
-            printf("Arquivo: %s | Tipo: %s", 
-                   pendingTasksToServer[i].notification.fileName, 
-                   obterNomeNotificacao(pendingTasksToServer[i].notification.type));
-
-            if (pendingTasksToServer[i].notification.type == RENAMED_FILE) {
-                printf(" | Nome Anterior: %s", pendingTasksToServer[i].notification.ancientFileName);
-            }
-            printf("1 taskToServer %d", nTasksToServer);
-            printf(" | Tempo: ");
-            imprimirTempo(pendingTasksToServer[i].time);
-            printf("\n");
-            printf("1 taskToServer %d", nTasksToServer);
-        }*/
-        fflush(stdout); 
-       
+        fflush(stdout);    
     }
-
-     
-    
-
 }
-void* clear_executed_local_tasks_function(void* arg) {
 
+void* clear_executed_local_tasks_function(void* arg) {
     while (client_info.running) {
        // Aqui a thread aguarda o semáforo, travando se primário desconectado
         sem_wait(&semaforo_conexao_primario);
@@ -516,29 +441,12 @@ void* clear_executed_local_tasks_function(void* arg) {
                 i--;  // Ajusta o índice após a remoção
             }
         }
-        /*
-        printf("\n== Lista de Tarefas Pendentes (%d tarefas) ==\n", nCurrentOrRecentTasksRecv);
-        for (int i = 0; i <nCurrentOrRecentTasksRecv; i++) {
-            printf("Arquivo: %s | Tipo: %s", 
-                  currentOrRecentTasksRecv[i].notification.fileName, 
-                   obterNomeNotificacao(currentOrRecentTasksRecv[i].notification.type));
-
-            if (currentOrRecentTasksRecv[i].notification.type == RENAMED_FILE) {
-                printf(" | Nome Anterior: %s", currentOrRecentTasksRecv[i].notification.ancientFileName);
-            }
-
-            printf(" | Tempo: ");
-            imprimirTempo(currentOrRecentTasksRecv[i].time);
-            printf("\n");
-        }
-        fflush(stdout); */
-        pthread_mutex_unlock(&mutex3);
-        
+        pthread_mutex_unlock(&mutex3);  
     }
     return NULL;
 }
+
 void updateFileServer(char * nome_arquivo){
-   
     char caminho_completo[1000];
     snprintf(caminho_completo, sizeof(caminho_completo), "%s/%s", client_info.sync_dir_path, nome_arquivo);
     pthread_mutex_lock(& mutexCurSen);
@@ -558,11 +466,9 @@ void updateFileServer(char * nome_arquivo){
     removeTaskAt(&pendingTasksToServer, &nTasksToServer,0);
     
     pthread_mutex_unlock(&mutexTasksToServer);
-   
-
 }
+
 void removeFileServer(char * nome_arquivo){
-   
     char caminho_completo[1000];
     snprintf(caminho_completo, sizeof(caminho_completo), "%s/%s", client_info.sync_dir_path, nome_arquivo);
     pthread_mutex_lock(& mutexCurSen);
@@ -580,12 +486,9 @@ void removeFileServer(char * nome_arquivo){
     removeTaskAt(&pendingTasksToServer, &nTasksToServer,0);
     
     pthread_mutex_unlock(&mutexTasksToServer);
-   
-
 }
 
 void renameFileServer(char * nome_arquivo_novo,char * nome_arquivo_antigo){
-   
     pthread_mutex_lock(& mutexCurSen);
     insertTaskToEnd(&currentOrRecentTasksSended, &nCurrentOrRecentTasksSended, nome_arquivo_novo, nome_arquivo_antigo, RENAMED_FILE, 1);
     pthread_mutex_unlock(& mutexCurSen);
@@ -602,67 +505,39 @@ void renameFileServer(char * nome_arquivo_novo,char * nome_arquivo_antigo){
     removeTaskAt(&pendingTasksToServer, &nTasksToServer,0);
     
     pthread_mutex_unlock(&mutexTasksToServer);
-   
-
 }
+
 void* process_server_task_thread_function(void* arg) {
-    
     while(client_info.running){
         // Aqui a thread aguarda o semáforo, travando se primário desconectado
         sem_wait(&semaforo_conexao_primario);
         sem_post(&semaforo_conexao_primario);
         
-       
         usleep(100000);
         pthread_mutex_lock(&mutexTasksToServer);
         
-        
-        
         if(nTasksToServer!=0&&getIndex(&currentOrRecentTasksSended, &nCurrentOrRecentTasksSended, pendingTasksToServer[0].notification.fileName, pendingTasksToServer[0].notification.ancientFileName,
         pendingTasksToServer[0].notification.type, 0)==-1){
-          
             struct Task task= pendingTasksToServer[0];
             pthread_mutex_unlock(&mutexTasksToServer);
-        switch (task.notification.type)
-        {
-        case 0:
-           
-            updateFileServer(task.notification.fileName);
-            break;
-         case 1:
-            renameFileServer(task.notification.fileName,task.notification.ancientFileName);
-            break;
-         case 2:
-            removeFileServer(task.notification.fileName);
-            break;
-        
-        default:
-            break;
-        }
-        
-        
-
-
-
+            switch (task.notification.type) {
+                case UPDATED_FILE:
+                    updateFileServer(task.notification.fileName);
+                    break;
+                case RENAMED_FILE:
+                    renameFileServer(task.notification.fileName,task.notification.ancientFileName);
+                    break;
+                case REMOVED_FILE:
+                    removeFileServer(task.notification.fileName);
+                    break;
+                
+                default:
+                    break;
+            }
         }
         pthread_mutex_unlock(&mutexTasksToServer);
-        
-        
-
-
     }
-    
-
 }
-#include <dirent.h>   // Para manipulação de diretórios
-#include <sys/types.h> // Para tipos como DIR
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
-#include <sys/stat.h>
-#include <dirent.h>
-#include <pthread.h>
 
 int get_sync_dir() {
     DIR *dir;
@@ -775,7 +650,6 @@ int get_sync_dir() {
 }
 
 void* clear_executed_server_tasks_function(void* arg) {
-
     while (client_info.running) {
        // Aqui a thread aguarda o semáforo, travando se primário desconectado
         sem_wait(&semaforo_conexao_primario);
@@ -793,30 +667,11 @@ void* clear_executed_server_tasks_function(void* arg) {
                 i--;  // Ajusta o índice após a remoção
             }
         }
-        /*
-        printf("\n== Lista de Tarefas Pendentes (%d tarefas) ==\n", nCurrentOrRecentTasksRecv);
-        for (int i = 0; i <nCurrentOrRecentTasksRecv; i++) {
-            printf("Arquivo: %s | Tipo: %s", 
-                  currentOrRecentTasksRecv[i].notification.fileName, 
-                   obterNomeNotificacao(currentOrRecentTasksRecv[i].notification.type));
-
-            if (currentOrRecentTasksRecv[i].notification.type == RENAMED_FILE) {
-                printf(" | Nome Anterior: %s", currentOrRecentTasksRecv[i].notification.ancientFileName);
-            }
-
-            printf(" | Tempo: ");
-            imprimirTempo(currentOrRecentTasksRecv[i].time);
-            printf("\n");
-        }
-        fflush(stdout); */
         pthread_mutex_unlock(&mutexCurSen);
         
     }
     return NULL;
 }
-
-
-
 
 //limpa o diretorio no inicio do programa
 void clean_directory(const char *path) {
@@ -843,49 +698,8 @@ void clean_directory(const char *path) {
             perror("Erro ao deletar arquivo");
         }
     }
-
     closedir(dir);
 }
-// Função para iniciar a sincronização
-/*
-void get_sync_dir() {
-    printf("Iniciando sincronização do diretório...\n");       
-    /*
-    // Verifica se o diretório existe
-    if (check_and_create_directory(client_info.sync_dir_path) != 0) {
-        printf("Erro ao preparar diretório de sincronização.\n");
-        return;
-    }
-    clean_directory(client_info.sync_dir_path);
-    // Obter os nomes dos arquivos que estão no servidor
-    char **arquivosServidor;
-    int num_arquivos = receiveFileListFromServer(&arquivosServidor, client_info.server_port, client_info.server_ip);
-    
-    if (num_arquivos < 0) {
-        perror("Erro ao obter lista de arquivos do servidor");
-        return;
-    }
-    
-    // Inserir as tarefas no vetor pendingTasks (usando mutex)
-    notification_t *notificacoes = malloc(num_arquivos * sizeof(notification_t));
-    if (notificacoes == NULL) {
-        perror("Erro ao alocar memória para notificações");
-        pthread_mutex_unlock(&mutex);
-        return;
-    }
-    
-    for (int i = 0; i < num_arquivos; i++) {
-        strcpy(notificacoes[i].fileName, arquivosServidor[i]);
-        notificacoes[i].type = UPDATED_FILE;
-        free(arquivosServidor[i]);
-    }
-    free(arquivosServidor);
-    
-    insertNewTasks(notificacoes, num_arquivos, &pendingTasks, &nTasks);
-    free(notificacoes);
-    
-    printf("Diretório de sincronização pronto.\n");
-}*/
 
 // Funções de interface com o usuário
 
@@ -1043,6 +857,7 @@ void delete_file(const char *filename) {
         printf("Arquivo %s não encontrado localmente.\n", filename);
     }
 }
+
 // Função que processa os comandos do usuário
 void process_command(char *command) {
     char cmd[MAX_COMMAND_SIZE];
@@ -1082,8 +897,6 @@ void process_command(char *command) {
     } else if (strcmp(cmd, "exit") == 0) {
         printf("Encerrando sessão...\n");
         client_info.running = 0;
-        
-        
     } else {
         printf("Comando desconhecido: %s\n", cmd);
         printf("Comandos disponíveis:\n");
@@ -1158,15 +971,13 @@ void obter_ip_local(char *ip_buffer, size_t buffer_size) {
 
     pclose(fp);
 }
-void encerrar_cliente (int sig){
-    client_info.running = 0;
-    
-    
+
+void encerrar_cliente (int sig) {
+    client_info.running = 0;  
 }
-void *monitorar_heartbeat(void *arg)
-{
-    while (client_info.running)
-    {
+
+void *monitorar_heartbeat(void *arg) {
+    while (client_info.running) {
         time_t agora = time(NULL);
         time_t ultimo;
 
@@ -1174,27 +985,22 @@ void *monitorar_heartbeat(void *arg)
         ultimo = ultimo_heartbeat;
         pthread_mutex_unlock(&heartbeat_mutex);
 
-      
-
-        if (difftime(agora, ultimo) > 3.0 && isConnected)
-        {
+        if (difftime(agora, ultimo) > 3.0 && isConnected) {
             printf("[monitor] Heartbeat não recebido por %.1f segundos. Congelando threads.\n", difftime(agora, ultimo) );
             isConnected = 0;
             sem_wait(&semaforo_conexao_primario);
         }
 
-        if (difftime(agora, ultimo) <=2.0&& !isConnected)
-        {
+        if (difftime(agora, ultimo) <=2.0&& !isConnected) {
             printf("[monitor] Heartbeat voltou. Descongelando threads.\n");
             isConnected = 1;
             sem_post(&semaforo_conexao_primario);
         }
-
         sleep(1); // Verifica a cada 1s
     }
-
     pthread_exit(NULL);
 }
+
 void *receber_heartbeat(void *arg) {
     struct sockaddr_in server_addr, client_addr;
     socklen_t client_len = sizeof(client_addr);
@@ -1225,12 +1031,10 @@ void *receber_heartbeat(void *arg) {
         pthread_exit(NULL);
     }
 
-    printf("[heartbeat] Aguardando conexões de heartbeat na porta %d...\n", PORTA_HEARTBEAT);
-
     while (client_info.running) {
         connfd_heartbeat = accept(sockfd_heartbeat, (struct sockaddr *)&client_addr, &client_len);
         if (connfd_heartbeat < 0) {
-            perror("[heartbeat] accept");
+            perror("[CLIENTE HEARTBEAT] Erro no accept para heartbeat"); 
             continue;
         }
 
@@ -1266,15 +1070,14 @@ void *receber_heartbeat(void *arg) {
 
         close(connfd_heartbeat);
     }
-
     pthread_exit(NULL);
 }
 
-
 int main(int argc, char *argv[]) {
-     ultimo_heartbeat = time(NULL);
+    ultimo_heartbeat = time(NULL);
     sem_init(&semaforo_conexao_primario, 0, 1);  // Começa destravado (valor 1)
     signal(SIGINT, encerrar_cliente);
+
      if (argc != 4) {
         printf("Uso: %s <username> <server_ip> <port>\n", argv[0]);
         return 1;
@@ -1289,16 +1092,10 @@ int main(int argc, char *argv[]) {
     //Identifica o cliente  com seu IP
     obter_ip_local(client_info.client_ip,16);
     
-   
-    
-    
-    
-    
-    
     //iniciaDiretorioCliente();
     // Inicializa o diretório de sincronização
     if(get_sync_dir()==1)
-    return 1;
+        return 1;
    
     pthread_t get_server_tasks_thread,process_local_task_thread,
     get_local_tasks_thread,clear_executed_local_tasks,process_server_task_thread,
@@ -1372,8 +1169,5 @@ int main(int argc, char *argv[]) {
     sem_destroy(&semaforo_conexao_primario);
 
     printf("Cliente encerrado.\n");
-    return 0;
-    
-
-   
+    return 0;   
 }
