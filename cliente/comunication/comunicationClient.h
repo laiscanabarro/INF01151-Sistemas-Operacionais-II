@@ -17,7 +17,20 @@ typedef struct {
     notification_type_t type;      // Tipo da notificação
 } notification_t;
 
-
+typedef enum {
+    CMD_ELECTION = 20,    // Mensagem de eleição (inicia a eleição)
+    CMD_ANSWER,           // Mensagem de resposta (resposta a ELECTION)
+    CMD_COORDINATOR,      // Mensagem de Coordenador (anuncia o novo líder)
+    CMD_WHO_IS_LEADER,    // Cliente pergunta quem é o líder
+    CMD_LEADER_IS,        // Servidor responde quem é o líder
+    CMD_HEARTBEAT         // Mensagem de heartbeat do líder para backups
+} election_command_type_t; 
+// Novo payload para mensagens de eleição/coordenador
+typedef struct election_message_payload {
+    election_command_type_t election_cmd_type; // Tipo de comando de eleição
+    int sender_id;                            // ID do processo que enviou a mensagem
+    int leader_id;                            // ID do novo líder (apenas para CMD_COORDINATOR)
+} election_message_payload;
 int sendNewFileToServer(char *nomeArquivo,char *diretorio,int PORTA, char * IP,char *nome_cliente,char *IP_cliente);
 int removeFileInServer(char *nomeArquivo,char *diretorio,int PORTA, char * IP,char *nome_cliente,char *IP_cliente);
 int updateFileName(char *novoNovo,char *nomeAntigo,char *diretorio,int PORTA, char * IP,char *nome_cliente,char *IP_cliente);

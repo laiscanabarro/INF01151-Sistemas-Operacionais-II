@@ -3,15 +3,22 @@
 #include <string.h>
 #include <unistd.h>
 #include <signal.h>
+#include <fcntl.h>
+#include <errno.h>
+#include <sys/time.h>
 #include <arpa/inet.h>
 #include <time.h>
 #include "../comunication/comunicationClient.h"
 #include <dirent.h>   // Para manipulação de diretórios
 #include <sys/types.h> // Para tipos como DIR
 #include <pthread.h>
+#include <semaphore.h>  // Para usar sem_t, sem_init, sem_wait, sem_post
 #define MAX_COMMAND_SIZE 1024
 #define MAX_PATH_SIZE 500
-
+#define PORTA_HEARTBEAT 9000   // Porta que o cliente vai escutar o heartbeat
+int sockfd_heartbeat = -1;      // Socket servidor, criado uma vez só
+int connfd_heartbeat = -1;      // Socket da conexão atual com o primário
+pthread_mutex_t  heartbeat_mutex=PTHREAD_MUTEX_INITIALIZER;//
 typedef struct {
     char username[50];
     char sync_dir_path[MAX_PATH_SIZE];
@@ -20,7 +27,10 @@ typedef struct {
     int server_port;
     int running;
 } client_info_t;
+time_t ultimo_heartbeat=0;
+sem_t semaforo_conexao_primario;  // Semáforo usado para travar/destravar threads
 
+int isConnected = 1;  // 1 = primário disponível, 0 = falhou ou desconectado
 client_info_t client_info;
 
 // Definição e inicialização do mutex (uma única vez)
@@ -265,7 +275,10 @@ void* get_server_tasks_thread_function(void* arg) {
     
     notification_t notifications[300];
     while (client_info.running) {
-        
+        // Aqui a thread aguarda o semáforo, travando se primário desconectado
+        sem_wait(&semaforo_conexao_primario);
+        sem_post(&semaforo_conexao_primario);
+
         usleep(300000);  // Aguardar meio segundo (500 milissegundos)
         
           pthread_mutex_lock(&mutex);
@@ -382,7 +395,9 @@ void updateFile(char * nome_arquivo){
 void* process_local_task_thread_function(void* arg) {
     
     while(client_info.running){
-        
+        // Aqui a thread aguarda o semáforo, travando se primário desconectado
+        sem_wait(&semaforo_conexao_primario);
+        sem_post(&semaforo_conexao_primario);
         
        
         usleep(100000);
@@ -432,7 +447,9 @@ void* process_local_task_thread_function(void* arg) {
 void* get_local_tasks_thread_function(void* arg) {
     
     while(client_info.running){
-   
+   // Aqui a thread aguarda o semáforo, travando se primário desconectado
+        sem_wait(&semaforo_conexao_primario);
+        sem_post(&semaforo_conexao_primario);
     usleep(500000);
     notification_t notifications[300];
     int num_notifications = receiveLastSecondLocalNotification(notifications,client_info.sync_dir_path);
@@ -483,7 +500,9 @@ void* get_local_tasks_thread_function(void* arg) {
 void* clear_executed_local_tasks_function(void* arg) {
 
     while (client_info.running) {
-       
+       // Aqui a thread aguarda o semáforo, travando se primário desconectado
+        sem_wait(&semaforo_conexao_primario);
+        sem_post(&semaforo_conexao_primario);
         usleep(300000);  // Atraso de 100 milissegundos (0.1 segundo)
 
         time_t now = time(NULL);  // Obter o tempo atual
@@ -589,7 +608,9 @@ void renameFileServer(char * nome_arquivo_novo,char * nome_arquivo_antigo){
 void* process_server_task_thread_function(void* arg) {
     
     while(client_info.running){
-        
+        // Aqui a thread aguarda o semáforo, travando se primário desconectado
+        sem_wait(&semaforo_conexao_primario);
+        sem_post(&semaforo_conexao_primario);
         
        
         usleep(100000);
@@ -708,7 +729,7 @@ int get_sync_dir() {
     //iniciando conexao com o servidor
     int codigo=0;
     int codigo_error_device;
-    send(sock, &codigo, sizeof(int), 0);
+    send(sock, &codigo, sizeof(int), 0);    
     int tamanho_nome_cliente=strlen(client_info.username);
     
     send(sock, &tamanho_nome_cliente, sizeof(int), 0);
@@ -718,7 +739,7 @@ int get_sync_dir() {
     send(sock, client_info.client_ip, tamanho_nome_IP, 0);
     recv(sock, &codigo_error_device, sizeof(int), 0);
     int waitBackup=0;
-    send(sock, &waitBackup, sizeof(int), 0);
+    recv(sock, &waitBackup, sizeof(int), 0);
     close(sock);
     
     if(codigo_error_device==-1){
@@ -756,7 +777,9 @@ int get_sync_dir() {
 void* clear_executed_server_tasks_function(void* arg) {
 
     while (client_info.running) {
-       
+       // Aqui a thread aguarda o semáforo, travando se primário desconectado
+        sem_wait(&semaforo_conexao_primario);
+        sem_post(&semaforo_conexao_primario);
         usleep(300000);  // Atraso de 100 milissegundos (0.1 segundo)
 
         time_t now = time(NULL);  // Obter o tempo atual
@@ -1140,7 +1163,117 @@ void encerrar_cliente (int sig){
     
     
 }
+void *monitorar_heartbeat(void *arg)
+{
+    while (client_info.running)
+    {
+        time_t agora = time(NULL);
+        time_t ultimo;
+
+        pthread_mutex_lock(&heartbeat_mutex);
+        ultimo = ultimo_heartbeat;
+        pthread_mutex_unlock(&heartbeat_mutex);
+
+      
+
+        if (difftime(agora, ultimo) > 3.0 && isConnected)
+        {
+            printf("[monitor] Heartbeat não recebido por %.1f segundos. Congelando threads.\n", difftime(agora, ultimo) );
+            isConnected = 0;
+            sem_wait(&semaforo_conexao_primario);
+        }
+
+        if (difftime(agora, ultimo) <=2.0&& !isConnected)
+        {
+            printf("[monitor] Heartbeat voltou. Descongelando threads.\n");
+            isConnected = 1;
+            sem_post(&semaforo_conexao_primario);
+        }
+
+        sleep(1); // Verifica a cada 1s
+    }
+
+    pthread_exit(NULL);
+}
+void *receber_heartbeat(void *arg) {
+    struct sockaddr_in server_addr, client_addr;
+    socklen_t client_len = sizeof(client_addr);
+
+    sockfd_heartbeat = socket(AF_INET, SOCK_STREAM, 0);
+    if (sockfd_heartbeat < 0) {
+        perror("[heartbeat] socket");
+        pthread_exit(NULL);
+    }
+
+    int opt = 1;
+    setsockopt(sockfd_heartbeat, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+
+    memset(&server_addr, 0, sizeof(server_addr));
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_addr.s_addr = INADDR_ANY;
+    server_addr.sin_port = htons(PORTA_HEARTBEAT);
+
+    if (bind(sockfd_heartbeat, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
+        perror("[heartbeat] bind");
+        close(sockfd_heartbeat);
+        pthread_exit(NULL);
+    }
+
+    if (listen(sockfd_heartbeat, 5) < 0) {
+        perror("[heartbeat] listen");
+        close(sockfd_heartbeat);
+        pthread_exit(NULL);
+    }
+
+    printf("[heartbeat] Aguardando conexões de heartbeat na porta %d...\n", PORTA_HEARTBEAT);
+
+    while (client_info.running) {
+        connfd_heartbeat = accept(sockfd_heartbeat, (struct sockaddr *)&client_addr, &client_len);
+        if (connfd_heartbeat < 0) {
+            perror("[heartbeat] accept");
+            continue;
+        }
+
+        int codigo;
+        ssize_t n = recv(connfd_heartbeat, &codigo, sizeof(int), 0);
+        if (n <= 0 || codigo != 9) {
+            close(connfd_heartbeat);
+            continue;
+        }
+
+        int tamanho_ip = 0;
+        if (recv(connfd_heartbeat, &tamanho_ip, sizeof(int), 0) <= 0) {
+            close(connfd_heartbeat);
+            continue;
+        }
+
+        char novo_ip[INET_ADDRSTRLEN] = {0};
+        if (recv(connfd_heartbeat, novo_ip, tamanho_ip, 0) <= 0) {
+            close(connfd_heartbeat);
+            continue;
+        }
+
+        // Se for novo IP, atualiza
+        if (strcmp(client_info.server_ip, novo_ip) != 0) {
+            printf("[heartbeat] Novo primário detectado: %s\n", novo_ip);
+            strncpy(client_info.server_ip, novo_ip, sizeof(client_info.server_ip));
+        }
+
+        // Após receber e validar heartbeat
+        pthread_mutex_lock(&heartbeat_mutex);
+        ultimo_heartbeat = time(NULL);
+        pthread_mutex_unlock(&heartbeat_mutex);
+
+        close(connfd_heartbeat);
+    }
+
+    pthread_exit(NULL);
+}
+
+
 int main(int argc, char *argv[]) {
+     ultimo_heartbeat = time(NULL);
+    sem_init(&semaforo_conexao_primario, 0, 1);  // Começa destravado (valor 1)
     signal(SIGINT, encerrar_cliente);
      if (argc != 4) {
         printf("Uso: %s <username> <server_ip> <port>\n", argv[0]);
@@ -1169,7 +1302,7 @@ int main(int argc, char *argv[]) {
    
     pthread_t get_server_tasks_thread,process_local_task_thread,
     get_local_tasks_thread,clear_executed_local_tasks,process_server_task_thread,
-    clear_executed_server_tasks,command_thread;  // Identificador da thread
+    clear_executed_server_tasks,command_thread,beep_thread,receber_heartbeat_thread,monitorar_heartbeat_thread;  // Identificador da thread
     int id = 1;
     // Criando a nova thread
     if (pthread_create(&get_server_tasks_thread, NULL, get_server_tasks_thread_function, &id) != 0) {
@@ -1208,6 +1341,8 @@ int main(int argc, char *argv[]) {
         perror("Erro ao criar thread de comandos");
         return 1;
     }
+    pthread_create(&receber_heartbeat_thread, NULL, receber_heartbeat, NULL);
+    pthread_create(&monitorar_heartbeat_thread, NULL, monitorar_heartbeat, NULL);
    
     
     // Encerra as outras threads
@@ -1234,7 +1369,8 @@ int main(int argc, char *argv[]) {
     else{
     printf("Conexao encerrada com sucesso\n");
     }
-    
+    sem_destroy(&semaforo_conexao_primario);
+
     printf("Cliente encerrado.\n");
     return 0;
     

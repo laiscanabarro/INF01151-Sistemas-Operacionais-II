@@ -68,7 +68,7 @@ int removeOperation(char *file_name, notification_type_t type, operation_destiny
     return 0;  // Sucesso
 }
 
-int receiveNewFileFromClient(int novo_socket,char *diretorio,pthread_mutex_t *conflitOperations,server_t servers [],int nServers,char *nome_cliente,char *IP_cliente){
+int receiveNewFileFromClient(int novo_socket,char *diretorio,pthread_mutex_t *conflitOperations,rm_info all_rms [],int num_all_rms,int leader_id,char *nome_cliente,char *IP_cliente){
     
     int tamanho_nome;
     char nome_arquivo[1024];
@@ -122,7 +122,7 @@ int receiveNewFileFromClient(int novo_socket,char *diretorio,pthread_mutex_t *co
     pthread_mutex_unlock(conflitOperations);
     fclose(arquivo);
 
-    replicateSendNewFileToBackups(servers,nServers, nome_arquivo,diretorio,8080,nome_cliente,IP_cliente);
+    replicateSendNewFileToBackups(all_rms,num_all_rms,leader_id, nome_arquivo,diretorio,8080,nome_cliente,IP_cliente);
     int waitBackup=0;
     send(novo_socket, &waitBackup, sizeof(int), 0);
     close(novo_socket);
@@ -131,7 +131,7 @@ int receiveNewFileFromClient(int novo_socket,char *diretorio,pthread_mutex_t *co
 
 }
 
-int removeFileInServer(int novo_socket, char *diretorio,pthread_mutex_t *conflitOperations,server_t servers [],int nServers,char *nome_cliente,char *IP_cliente) {
+int removeFileInServer(int novo_socket, char *diretorio,pthread_mutex_t *conflitOperations,rm_info all_rms [],int num_all_rms,int leader_id,char *nome_cliente,char *IP_cliente) {
     
     int tamanho_nome;
     char nome_arquivo[1024];
@@ -171,14 +171,14 @@ int removeFileInServer(int novo_socket, char *diretorio,pthread_mutex_t *conflit
     pthread_mutex_lock(conflitOperations);
     removeOperation(nome_arquivo,REMOVED_FILE,SERVER,novo_socket,nome_cliente);
     pthread_mutex_unlock(conflitOperations);
-    replicateRemoveFileOnBackups(servers,nServers, nome_arquivo,diretorio,8080,nome_cliente,IP_cliente);
+    replicateRemoveFileOnBackups(all_rms,num_all_rms, leader_id,nome_arquivo,diretorio,8080,nome_cliente,IP_cliente);
     int waitBackup=0;
     send(novo_socket, &waitBackup, sizeof(int), 0);
     close(novo_socket);
     return 0;
 }
 
-int updateFileName(int novo_socket, char *diretorio,pthread_mutex_t *conflitOperations,server_t servers [],int nServers,char *nome_cliente,char *IP_cliente) {
+int updateFileName(int novo_socket, char *diretorio,pthread_mutex_t *conflitOperations,rm_info all_rms [],int num_all_rms,int leader_id,char *nome_cliente,char *IP_cliente) {
     int tamanho_nome;
     char nome_antigo[1024];
     char nome_novo[1024];
@@ -226,7 +226,7 @@ int updateFileName(int novo_socket, char *diretorio,pthread_mutex_t *conflitOper
     pthread_mutex_lock(conflitOperations);
     removeOperation(nome_antigo,RENAMED_FILE,SERVER,novo_socket,nome_cliente);
     pthread_mutex_unlock(conflitOperations);
-    replicateUpdateFileNameOnBackups(servers,nServers, nome_novo,nome_antigo,diretorio,8080,nome_cliente,IP_cliente);
+    replicateUpdateFileNameOnBackups(all_rms,num_all_rms,leader_id, nome_novo,nome_antigo,diretorio,8080,nome_cliente,IP_cliente);
     int waitBackup=0;
     send(novo_socket, &waitBackup, sizeof(int), 0);
     close(novo_socket);
@@ -580,11 +580,11 @@ void obterListaArquivos(char *diretorio, char ***arquivos, int *nArquivos) {
     }
     closedir(dir);
 }
-void replicateConnecitonOnBackups(server_t servers[], int nServers, char *nome_cliente, char *IP_cliente) {
+void replicateConnecitonOnBackups(rm_info all_rms [], int num_all_rms,int leader_id, char *nome_cliente, char *IP_cliente) {
    
 
-    for (int i = 0; i < nServers; i++) {
-        if (servers[i].isPrimary) continue; // pula o próprio primário
+    for (int i = 0; i < num_all_rms; i++) {
+        if (all_rms[i].id==leader_id) continue; // pula o próprio primário
 
         int sockfd = socket(AF_INET, SOCK_STREAM, 0);
         if (sockfd < 0) {
@@ -596,14 +596,14 @@ void replicateConnecitonOnBackups(server_t servers[], int nServers, char *nome_c
         addr.sin_family = AF_INET;
         addr.sin_port = htons(8080);
 
-        if (inet_pton(AF_INET, servers[i].IP, &addr.sin_addr) <= 0) {
-            fprintf(stderr, "IP de backup inválido: %s\n", servers[i].IP);
+        if (inet_pton(AF_INET, all_rms[i].ip, &addr.sin_addr) <= 0) {
+            fprintf(stderr, "IP de backup inválido: %s\n", all_rms[i].ip);
             close(sockfd);
             continue;
         }
 
         if (connect(sockfd, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
-            fprintf(stderr, "Erro ao conectar ao backup %s\n", servers[i].IP);
+            fprintf(stderr, "Erro ao conectar ao backup %s\n", all_rms[i].ip);
             close(sockfd);
             continue;
         }
@@ -612,7 +612,7 @@ void replicateConnecitonOnBackups(server_t servers[], int nServers, char *nome_c
         int codigo = 0;
         int tamanho_nome_cliente = strlen(nome_cliente);
         int tamanho_nome_IP = strlen(IP_cliente);
-
+        
         send(sockfd, &codigo, sizeof(int), 0);
         send(sockfd, &tamanho_nome_cliente, sizeof(int), 0);
         send(sockfd, nome_cliente, tamanho_nome_cliente, 0);
@@ -623,28 +623,28 @@ void replicateConnecitonOnBackups(server_t servers[], int nServers, char *nome_c
     }
 }
 
-void replicateSendNewFileToBackups(server_t servers[], int nServers, char *fileName, char *directory, int port, char *nome_cliente, char *IP_cliente) {
+void replicateSendNewFileToBackups(rm_info all_rms [], int num_all_rms,int leader_id,char *fileName, char *directory, int port, char *nome_cliente, char *IP_cliente) {
    
 
-    for (int i = 0; i < nServers; i++) {
-        if (servers[i].isPrimary) continue; // pula o próprio primário
-        sendNewFileToServerBackups(fileName,directory,port, servers[i].IP,nome_cliente,IP_cliente);
+    for (int i = 0; i < num_all_rms; i++) {
+        if (all_rms[i].id==leader_id) continue; // pula o próprio primário
+        sendNewFileToServerBackups(fileName,directory,port, all_rms[i].ip,nome_cliente,IP_cliente);
     }
 }
 
 // -----------------------------------------------------------------------------
 // 2) Replica “Remove File”
 // -----------------------------------------------------------------------------
-void replicateRemoveFileOnBackups(server_t servers[], int nServers,
+void replicateRemoveFileOnBackups(rm_info all_rms [], int num_all_rms, int leader_id,
     char *fileName, char *directory,
     int port, char *clientName, char *clientIP)
 {
-    for (int i = 0; i < nServers; i++) {
-        if (servers[i].isPrimary) continue;
+    for (int i = 0; i < num_all_rms; i++) {
+        if (all_rms[i].id==leader_id) continue; // pula o próprio primário
         removeFileInServerBackups((char*)fileName,
                                   (char*)directory,
                                   port,
-                                  servers[i].IP,
+                                  all_rms[i].ip,
                                   (char*)clientName,
                                   (char*)clientIP);
     }
@@ -653,17 +653,17 @@ void replicateRemoveFileOnBackups(server_t servers[], int nServers,
 // -----------------------------------------------------------------------------
 // 3) Replica “Update File Name”
 // -----------------------------------------------------------------------------
-void replicateUpdateFileNameOnBackups(server_t servers[], int nServers,
+void replicateUpdateFileNameOnBackups(rm_info all_rms [], int num_all_rms,int leader_id,
    char *newName, char *oldName, char *directory,
     int port, char *clientName, char *clientIP)
 {
-    for (int i = 0; i < nServers; i++) {
-        if (servers[i].isPrimary) continue;
+    for (int i = 0; i < num_all_rms; i++) {
+         if (all_rms[i].id==leader_id) continue; // pula o próprio primário
         updateFileNameInServerBakcups((char*)newName,
                                       (char*)oldName,
                                       (char*)directory,
                                       port,
-                                      servers[i].IP,
+                                      all_rms[i].ip,
                                       (char*)clientName,
                                       (char*)clientIP);
     }
@@ -966,8 +966,196 @@ int updateFileNameInBackup(int novo_socket, char *diretorio,pthread_mutex_t *con
 }
 
 
+// [ELEIÇÃO DE LÍDER - FUNÇÕES DE COMUNICAÇÃO]
 
+// Funções para o algoritmo de Bully:
+// Estas funções encapsulam o envio de diferentes tipos de mensagens de eleição
+// Elas são chamadas pelos RMs para se comunicar entre si
 
+// Função auxiliar interna para enviar payloads de mensagens de eleição
+int send_election_message_internal(const char* ip, int port, election_message_payload payload) {
+    int sock = 0;
+    struct sockaddr_in server_address;
+
+    if ((sock = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
+        perror("Erro ao criar socket");
+         
+        return -1;
+    }
+
+    server_address.sin_family = AF_INET;
+    server_address.sin_port = htons(port);
+
+    if (inet_pton(AF_INET, ip, &server_address.sin_addr) <= 0) {
+        perror("Endereço inválido ou não suportado");
+        
+        close(sock);
+        return -1;
+    }
+
+    if (connect(sock, (struct sockaddr *)&server_address, sizeof(server_address)) < 0) {
+     
+        close(sock);
+        return -1;
+    }
+    //Envia codigo para mensagens de election
+    int codigo = 9;
+    send(sock, &codigo, sizeof(int), 0);
+    // Envia a payload
+    if (send(sock, &payload, sizeof(election_message_payload), 0) < 0) {
+        
+        perror("Falha ao enviar payload");
+        close(sock);
+        return -1;
+    }
+    close(sock);
+    return 0;
+}
+
+// Envia uma mensagem de ELECTION para iniciar o processo de eleição
+int send_election_message(const char* ip, int port, int sender_id) {
+    election_message_payload payload;
+    payload.election_cmd_type = CMD_ELECTION;
+    payload.sender_id = sender_id;
+    payload.leader_id = -1; 
+    printf("Enviando ELECTION de RM %d para %s:%d\n", sender_id, ip, port);
+    return send_election_message_internal(ip, port, payload);
+}
+
+// Envia uma mensagem de ANSWER (OK) em resposta a uma ELECTION
+int send_answer_message(const char* ip, int port, int sender_id) {
+    election_message_payload payload;
+    payload.election_cmd_type = CMD_ANSWER;
+    payload.sender_id = sender_id;
+    payload.leader_id = -1; 
+    printf("Enviando OK de RM %d para %s:%d\n", sender_id, ip, port);
+    return send_election_message_internal(ip, port, payload);
+}
+
+// Envia uma mensagem de COORDINATOR para anunciar o novo líder
+int send_coordinator_message(const char* ip, int port, int leader_id) {
+    election_message_payload payload;
+    payload.election_cmd_type = CMD_COORDINATOR;
+    payload.sender_id = leader_id; 
+    payload.leader_id = leader_id;
+    printf("Enviando COORDINATOR de RM %d para %s:%d\n", leader_id, ip, port);
+    return send_election_message_internal(ip, port, payload);
+}
+
+// Envia uma mensagem de HEARTBEAT para confirmar que o líder está ativo
+int send_heartbeat_to_rm(const char* ip, int port, int sender_id) {
+    election_message_payload payload;
+    payload.election_cmd_type = CMD_HEARTBEAT; 
+    payload.sender_id = sender_id;
+    payload.leader_id = current_leader_id; 
+    return send_election_message_internal(ip, port, payload);
+}
+
+// Envia uma mensagem CMD_LEADER_IS em resposta a uma consulta CMD_WHO_IS_LEADER
+int send_leader_is_message(int client_socket_fd, int leader_id) {
+    election_message_payload payload;
+    payload.election_cmd_type = CMD_LEADER_IS;
+    payload.sender_id = my_rm_id; 
+    payload.leader_id = leader_id;
+    printf("Enviando LEADER_IS (Lider: %d) para o cliente %d\n", leader_id, client_socket_fd);
+
+    if (send(client_socket_fd, &payload, sizeof(election_message_payload), 0) < 0) {
+        perror("Send LEADER_IS payload failed");
+        return -1;
+    }
+    return 0;
+}
+
+// Lida com a consulta de um cliente 'Quem é o líder?'
+int handle_who_is_leader_query(int client_socket_fd) {
+    pthread_mutex_lock(&leader_mutex);
+    int leader = current_leader_id;
+    pthread_mutex_unlock(&leader_mutex);
+
+    return send_leader_is_message(client_socket_fd, leader);
+}
+int send_heartbeat_to_client(const char* ip_destino, int port, const char* ip_primario) {
+    int sock = 0;
+    struct sockaddr_in server_address;
+
+    // 1. Criar socket
+    if ((sock = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
+        perror("Erro ao criar socket");
+        return -1;
+    }
+
+    // 2. Configurar endereço de destino
+    server_address.sin_family = AF_INET;
+    server_address.sin_port = htons(port);
+
+    if (inet_pton(AF_INET, ip_destino, &server_address.sin_addr) <= 0) {
+        perror("Endereço inválido ou não suportado");
+        close(sock);
+        return -1;
+    }
+
+    // 3. Conectar
+    if (connect(sock, (struct sockaddr *)&server_address, sizeof(server_address)) < 0) {
+        // Não precisa mostrar erro aqui, pois cliente pode estar temporariamente off
+        close(sock);
+        return -1;
+    }
+
+    // 4. Enviar código da mensagem (9)
+    int codigo = 9;
+    if (send(sock, &codigo, sizeof(int), 0) < 0) {
+        perror("Erro ao enviar código");
+        close(sock);
+        return -1;
+    }
+
+    // 5. Enviar tamanho do IP primário
+    int tam_ip = strlen(ip_primario) + 1;  // inclui \0
+    if (send(sock, &tam_ip, sizeof(int), 0) < 0) {
+        perror("Erro ao enviar tamanho do IP");
+        close(sock);
+        return -1;
+    }
+
+    // 6. Enviar string do IP primário
+    if (send(sock, ip_primario, tam_ip, 0) < 0) {
+        perror("Erro ao enviar IP primário");
+        close(sock);
+        return -1;
+    }
+
+    // 7. Fechar conexão
+    close(sock);
+    return 0;
+}
+int send_heartbeat_to_clients(clientInfo_t clientesInfo[], int num_clientes, int port,char *IP_primario){
+    int erros = 0;
+
+    for (int i = 0; i < num_clientes; i++) {
+         
+        for (int j = 0; j < clientesInfo[i].num_devices_conected; j++) {
+            const char* ip = clientesInfo[i].IP_devices[j];
+
+            election_message_payload payload;
+            payload.election_cmd_type = CMD_HEARTBEAT;
+            payload.sender_id = my_rm_id;         // ID do líder (este processo)
+            payload.leader_id = current_leader_id;
+
+            int resultado = send_heartbeat_to_client(ip, port, IP_primario);
+           
+            if (resultado != 0) {
+               // fprintf(stderr, "[send_heartbeat_to_clients] ERRO ao enviar heartbeat para %s:%d (cliente %s, device %d)\n",
+                     //   ip, port, clientesInfo[i].nome_cliente, j);
+                erros++;
+            } else {
+               // printf("[send_heartbeat_to_clients] Heartbeat enviado para %s:%d com sucesso (cliente %s, device %d)\n",
+                     //  ip, port, clientesInfo[i].nome_cliente, j);
+            }
+        }
+    }
+
+    return erros;  // número de heartbeats que falharam
+}
 
 
 
