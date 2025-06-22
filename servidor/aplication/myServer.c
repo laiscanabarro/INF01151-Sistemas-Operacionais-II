@@ -31,6 +31,7 @@ int num_clientes=0;
 
 pthread_mutex_t conflitOperation = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t insertDevice = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t heartbeat_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 // Estrutura para passar parâmetros para a thread
 typedef struct {
@@ -179,7 +180,9 @@ void handle_election_message(int novo_socket, election_message_payload payload) 
             // Atualizar o líder
             pthread_mutex_lock(&leader_mutex);     
             current_leader_id = payload.sender_id; 
-            last_heartbeat_time=time(NULL);
+            pthread_mutex_lock(&heartbeat_mutex);
+            last_heartbeat_time = time(NULL);
+            pthread_mutex_unlock(&heartbeat_mutex);
             pthread_mutex_unlock(&leader_mutex);   
             election_in_progress = 0;             
             answer_received = 0;
@@ -337,16 +340,10 @@ void *handle_client_request(void *args) {
 
 // ALTERAÇÃO: Nova função para lidar com mensagens de replicação para backups
 void *handle_replication_message(void *args) {
-    ThreadArgs *threadArgs = (ThreadArgs *)args;
-    int novo_socket = threadArgs->socket;
-    int codigo; // Este código é o tipo de operação (1, 2, 3 para replicação)
-
-    if (recv(novo_socket, &codigo, sizeof(int), 0) <= 0) {
-        perror("Erro ao receber o código da operação de replicação");
-        free(args);
-        close(novo_socket);
-        pthread_exit(NULL);
-    }
+    typedef struct { int socket; int code; } ReplicationMessageArgs; 
+    ReplicationMessageArgs *repl_msg_args = (ReplicationMessageArgs *)args;
+    int novo_socket = repl_msg_args->socket;
+    int codigo = repl_msg_args->code;
 
     char nome_cliente[100] = {0};
     int tamanho_nome_cliente = 0;
@@ -440,23 +437,10 @@ void *handle_replication_message(void *args) {
 // ALTERAÇÃO: Este é o novo manipulador unificado para TODAS as conexões de entrada
 void *handle_incoming_connection(void *args) {
     ThreadArgs *threadArgs = (ThreadArgs *)args;
-    int novo_socket = threadArgs->socket; // Este será o socket 5 para a segunda conexão
+    int novo_socket = threadArgs->socket; 
     int initial_code;
 
-    // --- Adicionar timeout ao socket (antes do recv) ---
-    struct timeval tv;
-    tv.tv_sec = 5;  // 5 segundos de timeout
-    tv.tv_usec = 0;
-    setsockopt(novo_socket, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof tv);
-    // ----------------------------------------------------
-
     ssize_t bytes_read_initial_code = recv(novo_socket, &initial_code, sizeof(int), 0);
-
-    // --- Remover o timeout após a operação (opcional, ou reconfigurar) ---
-    tv.tv_sec = 0;
-    setsockopt(novo_socket, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof tv);
-    // ---------------------------------------------------------------------
-
     if (bytes_read_initial_code <= 0) {
         if (bytes_read_initial_code == 0) {
             printf("[SERVER RM %d] Cliente no socket %d fechou a conexão antes de enviar o código inicial (recv retornou 0).\n", my_rm_id, novo_socket);
@@ -616,9 +600,9 @@ int parse_server_args(int argc, char *argv[]) {
     }
 
     if(current_leader_id==my_rm_id)
-    printf("Sou o primario\n");
+        printf("Sou o primario\n");
     else
-    printf("Sou o backup");
+        printf("Sou o backup");
 
     return 0;
 }
@@ -684,7 +668,11 @@ void* heartbeat_thread(void* arg) {
             pthread_mutex_unlock(&insertDevice); 
         } else {    
             time_t agora = time(NULL);
-            if(agora - last_heartbeat_time >= 2){
+            pthread_mutex_lock(&heartbeat_mutex);
+            time_t ultimo = last_heartbeat_time;
+            pthread_mutex_unlock(&heartbeat_mutex);
+
+            if (difftime(agora, ultimo) > 3.0) {
                 // Falha no heartbeat para o líder, então iniciar eleição
                 pthread_mutex_lock(&election_mutex);        
                 if (!election_in_progress) {                
