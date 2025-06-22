@@ -6,13 +6,14 @@
 #include <dirent.h>
 #include <time.h>
 #include <pthread.h>
+#include <sys/stat.h>
 #include "comunicationServer.h"
+
 #define MAX_OPERATIONS 300
-#define MAX_CLIENTES 200
+#define MAX_CLIENTS 200
+#define MAX_NOTIFICATIONS 1024
 
 int nOperations = 0;
-
-
 operationEntry_t actualOperations[MAX_OPERATIONS];
 
 // Verifica se o arquivo está em operação conflitante para o cliente específico
@@ -68,8 +69,7 @@ int removeOperation(char *file_name, notification_type_t type, operation_destiny
     return 0;  // Sucesso
 }
 
-int receiveNewFileFromClient(int novo_socket,char *diretorio,pthread_mutex_t *conflitOperations,rm_info all_rms [],int num_all_rms,int leader_id,char *nome_cliente,char *IP_cliente){
-    
+int receiveNewFileFromClient(int novo_socket,char *diretorio,pthread_mutex_t *conflitOperations,rm_info all_rms [],int num_all_rms,int leader_id,char *nome_cliente,char *IP_cliente) {
     int tamanho_nome;
     char nome_arquivo[1024];
     char buffer[1024];
@@ -126,28 +126,24 @@ int receiveNewFileFromClient(int novo_socket,char *diretorio,pthread_mutex_t *co
     int waitBackup=0;
     send(novo_socket, &waitBackup, sizeof(int), 0);
     close(novo_socket);
-
-
-
 }
 
 int removeFileInServer(int novo_socket, char *diretorio,pthread_mutex_t *conflitOperations,rm_info all_rms [],int num_all_rms,int leader_id,char *nome_cliente,char *IP_cliente) {
-    
     int tamanho_nome;
     char nome_arquivo[1024];
     
     // Recebe o nome do arquivo
     if (recv(novo_socket, &tamanho_nome, sizeof(int), 0) <= 0) 
         return 1;
+
     recv(novo_socket, nome_arquivo, tamanho_nome, 0);
     nome_arquivo[tamanho_nome] = '\0';
     
-   
     int wait=1;
-    while(wait){
+    while(wait) {
         usleep(100000);
         pthread_mutex_lock(conflitOperations);
-        if(!isFileInClientServerConflitOperation(nome_arquivo,REMOVED_FILE,SERVER,nome_cliente)){
+        if(!isFileInClientServerConflitOperation(nome_arquivo,REMOVED_FILE,SERVER,nome_cliente)) {
             wait=0;
           insertOperation(nome_arquivo,REMOVED_FILE,SERVER,novo_socket,nome_cliente);
 
@@ -155,7 +151,6 @@ int removeFileInServer(int novo_socket, char *diretorio,pthread_mutex_t *conflit
         pthread_mutex_unlock(conflitOperations);
 
     }
-    
     
     // Caminho completo
     char caminho_completo[1024 * 2];
@@ -186,9 +181,9 @@ int updateFileName(int novo_socket, char *diretorio,pthread_mutex_t *conflitOper
     // Recebe o nome antigo do arquivo
     if (recv(novo_socket, &tamanho_nome, sizeof(int), 0) <= 0) 
         return 1;
+
     recv(novo_socket, nome_antigo, tamanho_nome, 0);
     nome_antigo[tamanho_nome] = '\0';
-    
    
     int wait=1;
     while(wait){
@@ -240,9 +235,9 @@ int sendNewFileToClient(int novo_socket, char *diretorio,pthread_mutex_t *confli
     // Recebe o nome do arquivo solicitado
     if (recv(novo_socket, &tamanho_nome, sizeof(int), 0) <= 0) 
         return 1;
+
     recv(novo_socket, nome_arquivo, tamanho_nome, 0);
     nome_arquivo[tamanho_nome] = '\0';
-
 
     int wait=1;
     while(wait){
@@ -284,19 +279,6 @@ int sendNewFileToClient(int novo_socket, char *diretorio,pthread_mutex_t *confli
     close(novo_socket);
     return 0;
 }
-
-
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <dirent.h>
-#include <sys/stat.h>
-#include <unistd.h>
-#include <time.h>
-
-
-#define MAX_NOTIFICATIONS 1024
-#define MAX_CLIENTS 200  // número máximo de clientes simultâneos
 
 // Agora a função recebe também o índice do cliente
 int sendLastSecondNotificationToClient(int novo_socket, int ind_cliente, char *diretorio) {
@@ -409,7 +391,6 @@ int receiveLastSecondLocalNotification(int ind_cliente, notification_t *notifica
                 break;
             }
         }
-
         // novo arquivo
         if (is_new) {
             strncpy(last_notifications[ind_cliente][last_notification_count[ind_cliente]].fileName,
@@ -431,7 +412,6 @@ int receiveLastSecondLocalNotification(int ind_cliente, notification_t *notifica
             last_notification_count[ind_cliente]++;
         }
     }
-
     // atualizar histórico
     dir = opendir(diretorio);
     previous_count[ind_cliente] = 0;
@@ -477,9 +457,6 @@ void filterNotifications(notification_t *notifications, int *num_notifications) 
     }
 }
 
-
-
-
 int sendFileListToClient(int novo_socket, char *diretorio){
     int nArquivos=0;
     char **arquivos;
@@ -522,6 +499,7 @@ int sendFileListToClient(int novo_socket, char *diretorio){
     }
     free(arquivos);
 }
+
 void obterListaArquivos(char *diretorio, char ***arquivos, int *nArquivos) {
     DIR *dir;
     struct dirent *entry;
@@ -580,9 +558,8 @@ void obterListaArquivos(char *diretorio, char ***arquivos, int *nArquivos) {
     }
     closedir(dir);
 }
-void replicateConnecitonOnBackups(rm_info all_rms [], int num_all_rms,int leader_id, char *nome_cliente, char *IP_cliente) {
-   
 
+void replicateConnecitonOnBackups(rm_info all_rms [], int num_all_rms,int leader_id, char *nome_cliente, char *IP_cliente) {
     for (int i = 0; i < num_all_rms; i++) {
         if (all_rms[i].id==leader_id) continue; // pula o próprio primário
 
@@ -624,8 +601,6 @@ void replicateConnecitonOnBackups(rm_info all_rms [], int num_all_rms,int leader
 }
 
 void replicateSendNewFileToBackups(rm_info all_rms [], int num_all_rms,int leader_id,char *fileName, char *directory, int port, char *nome_cliente, char *IP_cliente) {
-   
-
     for (int i = 0; i < num_all_rms; i++) {
         if (all_rms[i].id==leader_id) continue; // pula o próprio primário
         sendNewFileToServerBackups(fileName,directory,port, all_rms[i].ip,nome_cliente,IP_cliente);
@@ -637,8 +612,7 @@ void replicateSendNewFileToBackups(rm_info all_rms [], int num_all_rms,int leade
 // -----------------------------------------------------------------------------
 void replicateRemoveFileOnBackups(rm_info all_rms [], int num_all_rms, int leader_id,
     char *fileName, char *directory,
-    int port, char *clientName, char *clientIP)
-{
+    int port, char *clientName, char *clientIP) {
     for (int i = 0; i < num_all_rms; i++) {
         if (all_rms[i].id==leader_id) continue; // pula o próprio primário
         removeFileInServerBackups((char*)fileName,
@@ -655,8 +629,7 @@ void replicateRemoveFileOnBackups(rm_info all_rms [], int num_all_rms, int leade
 // -----------------------------------------------------------------------------
 void replicateUpdateFileNameOnBackups(rm_info all_rms [], int num_all_rms,int leader_id,
    char *newName, char *oldName, char *directory,
-    int port, char *clientName, char *clientIP)
-{
+    int port, char *clientName, char *clientIP) {
     for (int i = 0; i < num_all_rms; i++) {
          if (all_rms[i].id==leader_id) continue; // pula o próprio primário
         updateFileNameInServerBakcups((char*)newName,
@@ -668,7 +641,8 @@ void replicateUpdateFileNameOnBackups(rm_info all_rms [], int num_all_rms,int le
                                       (char*)clientIP);
     }
 }
-int sendNewFileToServerBackups(char *nomeArquivo,char *diretorio,int PORTA,char * IP,char *nome_cliente,char *IP_cliente){
+
+int sendNewFileToServerBackups(char *nomeArquivo,char *diretorio,int PORTA,char * IP,char *nome_cliente,char *IP_cliente) {
     int sock;
     struct sockaddr_in endereco;
     // Conexão ao servidor
@@ -801,11 +775,7 @@ int updateFileNameInServerBakcups(char *nomeNovo, char *nomeAntigo, char *direto
     return 0;
 }
 
-
-
-
 int receiveNewFileFromPrimary(int novo_socket,char *diretorio,pthread_mutex_t *conflitOperations){
-    
     int tamanho_nome;
     char nome_arquivo[1024];
     char buffer[1024];
@@ -820,19 +790,6 @@ int receiveNewFileFromPrimary(int novo_socket,char *diretorio,pthread_mutex_t *c
         printf("Conexão encerrada pelo cliente.\n");
         return 1;
     }
-    /*
-    int wait=1;
-    while(wait){
-        usleep(100000);
-        pthread_mutex_lock(conflitOperations);
-        if(!isFileInClientServerConflitOperation(nome_arquivo,UPDATED_FILE,SERVER)){
-            wait=0;
-           insertOperation(nome_arquivo,UPDATED_FILE,SERVER,novo_socket);
-
-         }
-        pthread_mutex_unlock(conflitOperations);
-
-    }*/
     
     // Caminho completo
     char caminho_completo[1024 * 2];
@@ -853,20 +810,11 @@ int receiveNewFileFromPrimary(int novo_socket,char *diretorio,pthread_mutex_t *c
         fwrite(buffer, 1, bytes, arquivo);
         bytes_recebidos += bytes;
     }
-    /*
-    pthread_mutex_lock(conflitOperations);
-    removeOperation(nome_arquivo,UPDATED_FILE,SERVER,novo_socket);
-    pthread_mutex_unlock(conflitOperations);
-    */
     fclose(arquivo);
     close(novo_socket);
-
-
-
 }
 
 int removeFileInServerBackup(int novo_socket, char *diretorio,pthread_mutex_t *conflitOperations) {
-    
     int tamanho_nome;
     char nome_arquivo[1024];
     
@@ -874,22 +822,7 @@ int removeFileInServerBackup(int novo_socket, char *diretorio,pthread_mutex_t *c
     if (recv(novo_socket, &tamanho_nome, sizeof(int), 0) <= 0) 
         return 1;
     recv(novo_socket, nome_arquivo, tamanho_nome, 0);
-    nome_arquivo[tamanho_nome] = '\0';
-    
-    /*
-    int wait=1;
-    while(wait){
-        usleep(100000);
-        pthread_mutex_lock(conflitOperations);
-        if(!isFileInClientServerConflitOperation(nome_arquivo,REMOVED_FILE,SERVER)){
-            wait=0;
-          insertOperation(nome_arquivo,REMOVED_FILE,SERVER,novo_socket);
-
-         }
-        pthread_mutex_unlock(conflitOperations);
-
-    }*/
-    
+    nome_arquivo[tamanho_nome] = '\0';    
     
     // Caminho completo
     char caminho_completo[1024 * 2];
@@ -902,11 +835,6 @@ int removeFileInServerBackup(int novo_socket, char *diretorio,pthread_mutex_t *c
         perror("Erro ao remover o arquivo");
         return 1;
     }
-    /*
-    pthread_mutex_lock(conflitOperations);
-    removeOperation(nome_arquivo,REMOVED_FILE,SERVER,novo_socket);
-    pthread_mutex_unlock(conflitOperations);
-    */
     close(novo_socket);
     return 0;
 }
@@ -921,20 +849,7 @@ int updateFileNameInBackup(int novo_socket, char *diretorio,pthread_mutex_t *con
         return 1;
     recv(novo_socket, nome_antigo, tamanho_nome, 0);
     nome_antigo[tamanho_nome] = '\0';
-    
-    /*
-    int wait=1;
-    while(wait){
-        usleep(100000);
-        pthread_mutex_lock(conflitOperations);
-        if(!isFileInClientServerConflitOperation(nome_antigo,RENAMED_FILE,SERVER)){
-            wait=0;
-           insertOperation(nome_antigo,RENAMED_FILE,SERVER,novo_socket);
 
-         }
-        pthread_mutex_unlock(conflitOperations);
-
-    }*/
     // Caminho completo antigo
     char caminho_completo_antigo[1024 * 2];
     snprintf(caminho_completo_antigo, sizeof(caminho_completo_antigo), "%s/%s", diretorio, nome_antigo);
@@ -956,11 +871,6 @@ int updateFileNameInBackup(int novo_socket, char *diretorio,pthread_mutex_t *con
     } else {
         printf("Arquivo '%s' renomeado para '%s' com sucesso!\n", nome_antigo, nome_novo);
     }
-    /*
-    pthread_mutex_lock(conflitOperations);
-    removeOperation(nome_antigo,RENAMED_FILE,SERVER,novo_socket);
-    pthread_mutex_unlock(conflitOperations);
-    */
     close(novo_socket);
     return 0;
 }
@@ -1036,9 +946,16 @@ int send_answer_message(const char* ip, int port, int sender_id) {
 int send_coordinator_message(const char* ip, int port, int leader_id) {
     election_message_payload payload;
     payload.election_cmd_type = CMD_COORDINATOR;
-    payload.sender_id = leader_id; 
+    payload.sender_id = leader_id;
     payload.leader_id = leader_id;
-    printf("Enviando COORDINATOR de RM %d para %s:%d\n", leader_id, ip, port);
+    // Find leader's IP from all_rms based on leader_id
+    for (int i = 0; i < num_all_rms; i++) {
+        if (all_rms[i].id == leader_id) {
+            strncpy(payload.leader_ip, all_rms[i].ip, sizeof(payload.leader_ip));
+            break;
+        }
+    }
+    printf("Enviando COORDINATOR de RM %d (IP: %s) para %s:%d\n", leader_id, payload.leader_ip, ip, port);
     return send_election_message_internal(ip, port, payload);
 }
 
@@ -1057,7 +974,13 @@ int send_leader_is_message(int client_socket_fd, int leader_id) {
     payload.election_cmd_type = CMD_LEADER_IS;
     payload.sender_id = my_rm_id; 
     payload.leader_id = leader_id;
-    printf("Enviando LEADER_IS (Lider: %d) para o cliente %d\n", leader_id, client_socket_fd);
+    for (int i = 0; i < num_all_rms; i++) {
+        if (all_rms[i].id == leader_id) {
+            strncpy(payload.leader_ip, all_rms[i].ip, sizeof(payload.leader_ip));
+            break;
+        }
+    }
+    printf("Enviando LEADER_IS (Lider: %d, IP: %s) para o cliente %d\n", leader_id, payload.leader_ip, client_socket_fd);
 
     if (send(client_socket_fd, &payload, sizeof(election_message_payload), 0) < 0) {
         perror("Send LEADER_IS payload failed");
@@ -1074,29 +997,28 @@ int handle_who_is_leader_query(int client_socket_fd) {
 
     return send_leader_is_message(client_socket_fd, leader);
 }
+
 int send_heartbeat_to_client(const char* ip_destino, int port, const char* ip_primario) {
     int sock = 0;
     struct sockaddr_in server_address;
 
     // 1. Criar socket
     if ((sock = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
-        perror("Erro ao criar socket");
+        perror("[SERVER HEARTBEAT] Erro ao criar socket para cliente heartbeat");
         return -1;
     }
 
     // 2. Configurar endereço de destino
     server_address.sin_family = AF_INET;
     server_address.sin_port = htons(port);
-
     if (inet_pton(AF_INET, ip_destino, &server_address.sin_addr) <= 0) {
-        perror("Endereço inválido ou não suportado");
+        perror("[SERVER HEARTBEAT] Endereço de cliente inválido ou não suportado para heartbeat");
         close(sock);
         return -1;
     }
 
-    // 3. Conectar
+    // 3. Conectar - esta pode falhar se o cliente não estiver escutando ou se houver firewall
     if (connect(sock, (struct sockaddr *)&server_address, sizeof(server_address)) < 0) {
-        // Não precisa mostrar erro aqui, pois cliente pode estar temporariamente off
         close(sock);
         return -1;
     }
@@ -1104,22 +1026,22 @@ int send_heartbeat_to_client(const char* ip_destino, int port, const char* ip_pr
     // 4. Enviar código da mensagem (9)
     int codigo = 9;
     if (send(sock, &codigo, sizeof(int), 0) < 0) {
-        perror("Erro ao enviar código");
+        perror("[SERVER HEARTBEAT] Erro ao enviar código 9 para cliente heartbeat");
         close(sock);
         return -1;
     }
 
     // 5. Enviar tamanho do IP primário
-    int tam_ip = strlen(ip_primario) + 1;  // inclui \0
+    int tam_ip = strlen(ip_primario) + 1; 
     if (send(sock, &tam_ip, sizeof(int), 0) < 0) {
-        perror("Erro ao enviar tamanho do IP");
+        perror("[SERVER HEARTBEAT] Erro ao enviar tamanho do IP primário para cliente heartbeat");
         close(sock);
         return -1;
     }
 
     // 6. Enviar string do IP primário
     if (send(sock, ip_primario, tam_ip, 0) < 0) {
-        perror("Erro ao enviar IP primário");
+        perror("[SERVER HEARTBEAT] Erro ao enviar IP primário para cliente heartbeat");
         close(sock);
         return -1;
     }
@@ -1128,38 +1050,22 @@ int send_heartbeat_to_client(const char* ip_destino, int port, const char* ip_pr
     close(sock);
     return 0;
 }
-int send_heartbeat_to_clients(clientInfo_t clientesInfo[], int num_clientes, int port,char *IP_primario){
+
+int send_heartbeat_to_clients(clientInfo_t clientesInfo[], int num_clientes, int port, char *IP_primario){
     int erros = 0;
 
     for (int i = 0; i < num_clientes; i++) {
-         
         for (int j = 0; j < clientesInfo[i].num_devices_conected; j++) {
             const char* ip = clientesInfo[i].IP_devices[j];
-
-            election_message_payload payload;
-            payload.election_cmd_type = CMD_HEARTBEAT;
-            payload.sender_id = my_rm_id;         // ID do líder (este processo)
-            payload.leader_id = current_leader_id;
-
-            int resultado = send_heartbeat_to_client(ip, port, IP_primario);
-           
-            if (resultado != 0) {
-               // fprintf(stderr, "[send_heartbeat_to_clients] ERRO ao enviar heartbeat para %s:%d (cliente %s, device %d)\n",
-                     //   ip, port, clientesInfo[i].nome_cliente, j);
-                erros++;
+            if (strlen(ip) > 0) { // Garante que o IP não está vazio (após remoção de device)
+                int resultado = send_heartbeat_to_client(ip, port, IP_primario);
+                if (resultado != 0) {
+                    erros++;
+                } 
             } else {
-               // printf("[send_heartbeat_to_clients] Heartbeat enviado para %s:%d com sucesso (cliente %s, device %d)\n",
-                     //  ip, port, clientesInfo[i].nome_cliente, j);
+                printf("[SERVER HEARTBEAT] Ignorando device vazio na posição %d para cliente %s.\n", j, clientesInfo[i].nome_cliente);
             }
         }
     }
-
-    return erros;  // número de heartbeats que falharam
+    return erros;
 }
-
-
-
-
-
-
-
