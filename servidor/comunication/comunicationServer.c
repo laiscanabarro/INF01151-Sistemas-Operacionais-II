@@ -214,6 +214,9 @@ int updateFileName(int novo_socket, char *diretorio,pthread_mutex_t *conflitOper
     // Renomeia o arquivo
     if (rename(caminho_completo_antigo, caminho_completo_novo) != 0) {
         perror("Erro ao renomear arquivo");
+        int waitBackup=0;
+        send(novo_socket, &waitBackup, sizeof(int), 0);
+        close(novo_socket);
         return 1;
     } else {
         printf("Arquivo '%s' renomeado para '%s' com sucesso!\n", nome_antigo, nome_novo);

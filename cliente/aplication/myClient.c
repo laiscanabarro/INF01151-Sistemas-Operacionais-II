@@ -317,7 +317,7 @@ void deleteFile(char * nome_arquivo){
     currentOrRecentTasksRecv[j].executing=0;
     currentOrRecentTasksRecv[j].time=time(NULL);
     pthread_mutex_unlock(&mutex3);
-
+     
     pthread_mutex_lock(&mutex);
     removeTaskAt(&pendingTasks, &nTasks,0);
     pthread_mutex_unlock(&mutex);
@@ -338,7 +338,7 @@ void renameFile(char * nome_arquivo_novo,char * nome_arquivo_antigo){
     currentOrRecentTasksRecv[j].executing=0;
     currentOrRecentTasksRecv[j].time=time(NULL);
     pthread_mutex_unlock(&mutex3);
-
+    
     pthread_mutex_lock(&mutex);
     removeTaskAt(&pendingTasks, &nTasks,0);
     pthread_mutex_unlock(&mutex);
@@ -357,7 +357,7 @@ void updateFile(char * nome_arquivo){
     currentOrRecentTasksRecv[j].executing=0;
     currentOrRecentTasksRecv[j].time=time(NULL);
     pthread_mutex_unlock(&mutex3);
-    
+   
     pthread_mutex_lock(&mutex);
     removeTaskAt(&pendingTasks, &nTasks,0);
     
@@ -365,37 +365,99 @@ void updateFile(char * nome_arquivo){
 }
 
 void* process_local_task_thread_function(void* arg) {
-    while(client_info.running) {
-        // Aqui a thread aguarda o semáforo, travando se primário desconectado
+    struct Task lastLocalTask;
+    time_t lastLocalTime = 0;
+
+    // Estado inicial: nenhuma tarefa executada ainda
+    lastLocalTask.notification.fileName[0] = '\0';
+    lastLocalTask.notification.ancientFileName[0] = '\0';
+    lastLocalTask.notification.type = -1;
+
+    while (client_info.running) {
         sem_wait(&semaforo_conexao_primario);
         sem_post(&semaforo_conexao_primario);
-        
         usleep(100000);
-        
-        pthread_mutex_lock(&mutex);
-        
-        if (nTasks!=0&&getIndex(&currentOrRecentTasksRecv, &nCurrentOrRecentTasksRecv, pendingTasks[0].notification.fileName, pendingTasks[0].notification.ancientFileName,
-        pendingTasks[0].notification.type, 0)==-1) {
-            struct Task task= pendingTasks[0];
-            pthread_mutex_unlock(&mutex);
-            switch (task.notification.type) {
-                case UPDATED_FILE:
-                    updateFile(task.notification.fileName);
-                    break;
-                case RENAMED_FILE:
-                    renameFile(task.notification.fileName,task.notification.ancientFileName);
-                    break;
-                case REMOVED_FILE:
-                    deleteFile(task.notification.fileName);
-                    break;
-                default:
-                    break;
-            }    
-        } else {
-            pthread_mutex_unlock(&mutex);
+
+        time_t now = time(NULL);
+
+        // Limpa histórico se ficou muito tempo sem executar nenhuma task local
+        if (lastLocalTask.notification.type != -1 &&
+            difftime(now, lastLocalTime) > 10.0) {
+            lastLocalTask.notification.fileName[0] = '\0';
+            lastLocalTask.notification.ancientFileName[0] = '\0';
+            lastLocalTask.notification.type = -1;
+            // não zera lastLocalTime para permitir descarte posterior
         }
+
+        pthread_mutex_lock(&mutex);
+        if (nTasks > 0) {
+            struct Task *currentTask = &pendingTasks[0];
+
+            // Verifica se é a mesma da última tarefa local executada
+            int isSameAsLastLocal =
+                lastLocalTask.notification.type != -1 &&
+                strcmp(currentTask->notification.fileName, lastLocalTask.notification.fileName) == 0 &&
+                strcmp(currentTask->notification.ancientFileName, lastLocalTask.notification.ancientFileName) == 0 &&
+                currentTask->notification.type == lastLocalTask.notification.type;
+
+            double sinceLastLocal = (lastLocalTime > 0)
+                ? difftime(now, lastLocalTime)
+                : 0.0;
+
+            if (isSameAsLastLocal) {
+                if (sinceLastLocal < 3.0) {
+                    // Tarefa duplicada local recente: não executa nem remove
+                    pthread_mutex_unlock(&mutex);
+                    continue;
+                } else {
+                    // Tarefa duplicada local, mas passou intervalo: descarta
+                    removeTaskAt(&pendingTasks, &nTasks, 0);
+                    pthread_mutex_unlock(&mutex);
+                    continue;
+                }
+            }
+
+            // Protege leitura de currentOrRecentTasksRecv
+            pthread_mutex_lock(&mutex3);
+            int isRecentLocal = getIndex(
+                &currentOrRecentTasksRecv, &nCurrentOrRecentTasksRecv,
+                currentTask->notification.fileName,
+                currentTask->notification.ancientFileName,
+                currentTask->notification.type, 0) != -1;
+            pthread_mutex_unlock(&mutex3);
+
+            if (!isRecentLocal) {
+                struct Task task = *currentTask;
+                pthread_mutex_unlock(&mutex);
+
+                // Executa operação local
+                switch (task.notification.type) {
+                    case UPDATED_FILE:
+                        updateFile(task.notification.fileName);
+                        break;
+                    case RENAMED_FILE:
+                        renameFile(task.notification.fileName,
+                                   task.notification.ancientFileName);
+                        break;
+                    case REMOVED_FILE:
+                        deleteFile(task.notification.fileName);
+                        break;
+                    default:
+                        break;
+                }
+
+                // Atualiza histórico para evitar repetições
+                lastLocalTask = task;
+                lastLocalTime = now;
+                continue;
+            }
+        }
+        pthread_mutex_unlock(&mutex);
     }
+
+    return NULL;
 }
+
 
 void* get_local_tasks_thread_function(void* arg) {
     while(client_info.running) {
@@ -409,6 +471,7 @@ void* get_local_tasks_thread_function(void* arg) {
     
         pthread_mutex_lock(&mutexTasksToServer);
         insertNewTasks(notifications, num_notifications, &pendingTasksToServer, &nTasksToServer);
+        
 
         pthread_mutex_lock(&mutex3);
         removeDuplicateTasks(pendingTasksToServer, &nTasksToServer, currentOrRecentTasksRecv, nCurrentOrRecentTasksRecv);
@@ -461,7 +524,7 @@ void updateFileServer(char * nome_arquivo){
     currentOrRecentTasksSended[j].time=time(NULL);
    
     pthread_mutex_unlock(& mutexCurSen);
-    
+
     pthread_mutex_lock(&mutexTasksToServer);
     removeTaskAt(&pendingTasksToServer, &nTasksToServer,0);
     
@@ -481,7 +544,7 @@ void removeFileServer(char * nome_arquivo){
     currentOrRecentTasksSended[j].executing=0;
     currentOrRecentTasksSended[j].time=time(NULL);
     pthread_mutex_unlock(& mutexCurSen);
-    
+ 
     pthread_mutex_lock(&mutexTasksToServer);
     removeTaskAt(&pendingTasksToServer, &nTasksToServer,0);
     
@@ -500,13 +563,251 @@ void renameFileServer(char * nome_arquivo_novo,char * nome_arquivo_antigo){
     currentOrRecentTasksSended[j].executing=0;
     currentOrRecentTasksSended[j].time=time(NULL);
     pthread_mutex_unlock(& mutexCurSen);
-    
+   
     pthread_mutex_lock(&mutexTasksToServer);
     removeTaskAt(&pendingTasksToServer, &nTasksToServer,0);
     
     pthread_mutex_unlock(&mutexTasksToServer);
 }
 
+void* process_server_task_thread_function(void* arg) {
+    struct Task lastTask;
+    time_t lastTime = 0;
+
+    // Estado inicial: nenhuma tarefa executada ainda
+    lastTask.notification.fileName[0] = '\0';
+    lastTask.notification.ancientFileName[0] = '\0';
+    lastTask.notification.type = -1;
+
+    while (client_info.running) {
+        sem_wait(&semaforo_conexao_primario);
+        sem_post(&semaforo_conexao_primario);
+        usleep(100000);
+
+        time_t now = time(NULL);
+
+        // Se passou muito tempo sem executar nenhuma task, limpa o histórico
+        if (lastTask.notification.type != -1 &&
+            difftime(now, lastTime) > 10.0) {
+            lastTask.notification.fileName[0] = '\0';
+            lastTask.notification.ancientFileName[0] = '\0';
+            lastTask.notification.type = -1;
+            // Não zera lastTime para poder eliminar tarefas antigas
+        }
+
+        pthread_mutex_lock(&mutexTasksToServer);
+        if (nTasksToServer > 0) {
+            struct Task *currentTask = &pendingTasksToServer[0];
+
+            // Verifica se é igual à última tarefa executada
+            int isSameAsLast = 
+                lastTask.notification.type != -1 &&
+                strcmp(currentTask->notification.fileName, lastTask.notification.fileName) == 0 &&
+                strcmp(currentTask->notification.ancientFileName, lastTask.notification.ancientFileName) == 0 &&
+                currentTask->notification.type == lastTask.notification.type;
+
+            double sinceLast = (lastTime > 0)
+                ? difftime(now, lastTime)
+                : 0.0;
+
+            if (isSameAsLast) {
+                if (sinceLast < 3.0) {
+                    // Tarefa duplicada recente: não executa nem remove
+                    pthread_mutex_unlock(&mutexTasksToServer);
+                    continue;
+                } else {
+                    // Tarefa duplicada mas já passou intervalo: descarta
+                    removeTaskAt(&pendingTasksToServer, &nTasksToServer, 0);
+                    pthread_mutex_unlock(&mutexTasksToServer);
+                    continue;
+                }
+            }
+
+            // Verifica se já foi enviada recentemente ao servidor
+            pthread_mutex_lock(&mutexCurSen);
+            int isRecent = getIndex(
+                &currentOrRecentTasksSended, &nCurrentOrRecentTasksSended,
+                currentTask->notification.fileName,
+                currentTask->notification.ancientFileName,
+                currentTask->notification.type, 0) != -1;
+            pthread_mutex_unlock(&mutexCurSen);
+
+            if (!isRecent) {
+                // Remove do vetor dentro da função de envio (updateFileServer etc.)
+                struct Task task = *currentTask;
+                pthread_mutex_unlock(&mutexTasksToServer);
+
+                switch (task.notification.type) {
+                    case UPDATED_FILE:
+                        updateFileServer(task.notification.fileName);
+                        break;
+                    case RENAMED_FILE:
+                        renameFileServer(
+                            task.notification.fileName,
+                            task.notification.ancientFileName);
+                        break;
+                    case REMOVED_FILE:
+                        removeFileServer(task.notification.fileName);
+                        break;
+                    default:
+                        break;
+                }
+
+                // Atualiza histórico para evitar repetições
+                lastTask = task;
+                lastTime = now;
+                continue;
+            }
+        }
+        pthread_mutex_unlock(&mutexTasksToServer);
+    }
+
+    return NULL;
+}
+
+/*
+void* process_server_task_thread_function(void* arg) {
+    struct Task lastTask;
+    time_t lastTime = 0;
+    lastTask.notification.fileName[0] = '\0';
+    lastTask.notification.ancientFileName[0] = '\0';
+    lastTask.notification.type = -1;
+
+    while (client_info.running) {
+        sem_wait(&semaforo_conexao_primario);
+        sem_post(&semaforo_conexao_primario);
+        usleep(100000);
+
+        pthread_mutex_lock(&mutexTasksToServer);
+
+        if (nTasksToServer > 0) {
+            struct Task *currentTask = &pendingTasksToServer[0];
+
+            int isSameAsLast =
+                strcmp(currentTask->notification.fileName, lastTask.notification.fileName) == 0 &&
+                strcmp(currentTask->notification.ancientFileName, lastTask.notification.ancientFileName) == 0 &&
+                currentTask->notification.type == lastTask.notification.type;
+
+            time_t now = time(NULL);
+            double delta = difftime(now, lastTime);
+
+            // Se é repetida e muito recente, remove de cara
+            if (isSameAsLast && delta < 2.5) {
+                printf("[DESCARTE] Tarefa duplicada muito recente, removida\n");
+                usleep(500000);
+                removeTaskAt(&pendingTasksToServer, &nTasksToServer, 0);
+                pthread_mutex_unlock(&mutexTasksToServer);
+                continue;
+            }
+
+            // Protege leitura de currentOrRecentTasksSended
+            pthread_mutex_lock(&mutexCurSen);
+            int isRecent = getIndex(
+                &currentOrRecentTasksSended, &nCurrentOrRecentTasksSended,
+                currentTask->notification.fileName,
+                currentTask->notification.ancientFileName,
+                currentTask->notification.type, 0) != -1;
+            pthread_mutex_unlock(&mutexCurSen);
+
+            if (!isRecent) {
+                struct Task task = *currentTask;
+                pthread_mutex_unlock(&mutexTasksToServer);
+
+                switch (task.notification.type) {
+                    case UPDATED_FILE:
+                        updateFileServer(task.notification.fileName);
+                        break;
+                    case RENAMED_FILE:
+                        renameFileServer(task.notification.fileName, task.notification.ancientFileName);
+                        break;
+                    case REMOVED_FILE:
+                        removeFileServer(task.notification.fileName);
+                        break;
+                    default:
+                        break;
+                }
+
+                lastTask = task;
+                lastTime = now;
+                continue;
+            }
+        }
+
+        pthread_mutex_unlock(&mutexTasksToServer);
+    }
+
+    return NULL;
+}*/
+
+
+/*
+void* process_server_task_thread_function(void* arg) {
+    struct Task lastTask;
+    time_t lastTime = 0;
+    lastTask.notification.fileName[0] = '\0';  // Inicializa com string vazia
+    lastTask.notification.ancientFileName[0] = '\0';
+    lastTask.notification.type = -1;
+
+    while (client_info.running) {
+        // Aguarda conexão com o primário
+        sem_wait(&semaforo_conexao_primario);
+        sem_post(&semaforo_conexao_primario);
+
+        usleep(100000);
+
+        pthread_mutex_lock(&mutexTasksToServer);
+
+        if (nTasksToServer > 0) {
+            struct Task *currentTask = &pendingTasksToServer[0];
+
+            // Verifica se já foi recentemente enviada
+            int isRecent = getIndex(&currentOrRecentTasksSended, &nCurrentOrRecentTasksSended,
+                                    currentTask->notification.fileName,
+                                    currentTask->notification.ancientFileName,
+                                    currentTask->notification.type, 0) != -1;
+
+            // Verifica se é igual à última tarefa executada recentemente
+            int isSameAsLast = (
+                strcmp(currentTask->notification.fileName, lastTask.notification.fileName) == 0 &&
+                strcmp(currentTask->notification.ancientFileName, lastTask.notification.ancientFileName) == 0 &&
+                currentTask->notification.type == lastTask.notification.type
+            );
+
+            time_t now = time(NULL);
+            int delayEnough = difftime(now, lastTime) > 5.0;
+
+            if (!isRecent && (!isSameAsLast || delayEnough)) {
+                struct Task task = *currentTask;
+                pthread_mutex_unlock(&mutexTasksToServer);
+
+                switch (task.notification.type) {
+                    case UPDATED_FILE:
+                        updateFileServer(task.notification.fileName);
+                        break;
+                    case RENAMED_FILE:
+                        renameFileServer(task.notification.fileName, task.notification.ancientFileName);
+                        break;
+                    case REMOVED_FILE:
+                        removeFileServer(task.notification.fileName);
+                        break;
+                    default:
+                        break;
+                }
+
+                // Atualiza histórico
+                lastTask = task;
+                lastTime = now;
+                continue; // evita unlock duplo
+            }
+        }
+
+        pthread_mutex_unlock(&mutexTasksToServer);
+    }
+
+    return NULL;
+}*/
+
+/*
 void* process_server_task_thread_function(void* arg) {
     while(client_info.running){
         // Aqui a thread aguarda o semáforo, travando se primário desconectado
@@ -515,10 +816,12 @@ void* process_server_task_thread_function(void* arg) {
         
         usleep(100000);
         pthread_mutex_lock(&mutexTasksToServer);
-        
+        time_t time;
+        struct Task lastTask;
         if(nTasksToServer!=0&&getIndex(&currentOrRecentTasksSended, &nCurrentOrRecentTasksSended, pendingTasksToServer[0].notification.fileName, pendingTasksToServer[0].notification.ancientFileName,
-        pendingTasksToServer[0].notification.type, 0)==-1){
+        pendingTasksToServer[0].notification.type, 0)==-1&&(lastTask.notification!=pendingTasksToServer[0].notification||TIME(NULL)-time>3)){
             struct Task task= pendingTasksToServer[0];
+            
             pthread_mutex_unlock(&mutexTasksToServer);
             switch (task.notification.type) {
                 case UPDATED_FILE:
@@ -534,10 +837,12 @@ void* process_server_task_thread_function(void* arg) {
                 default:
                     break;
             }
+            lastTask=pendingTasksToServer[0];
+            time=TIME(NULL);
         }
         pthread_mutex_unlock(&mutexTasksToServer);
     }
-}
+}*/
 
 int get_sync_dir() {
     DIR *dir;

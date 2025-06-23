@@ -6,6 +6,7 @@
 #include <pthread.h>
 #include <dirent.h>
 #include <sys/time.h>
+#include <signal.h>
 #include "../comunication/comunicationServer.h"
 #include <errno.h>
 #define PORTA 8080
@@ -287,6 +288,22 @@ void *handle_client_request(void *args) {
 
         if (codigo_device == 0) { 
             replicateConnecitonOnBackups(all_rms, num_all_rms, current_leader_id, nome_cliente, IP_cliente);
+// Envia todos os arquivos do cliente para os backups (sync_dir_xxx_server)
+char diretorio_cliente[1000];
+snprintf(diretorio_cliente, sizeof(diretorio_cliente), "%s/sync_dir_%s_server", getenv("HOME"), nome_cliente);
+
+// Lista os arquivos
+char **arquivos = NULL;
+int nArquivos = 0;
+obterListaArquivos(diretorio_cliente, &arquivos, &nArquivos);
+
+for (int i = 0; i < nArquivos; i++) {
+    replicateSendNewFileToBackups(all_rms, num_all_rms, current_leader_id, arquivos[i],
+                                   diretorio_cliente, 8080, nome_cliente, IP_cliente);
+    free(arquivos[i]);
+}
+free(arquivos);
+
             int waitBackup = 0; 
             send(novo_socket, &waitBackup, sizeof(int), 0);
         }
@@ -295,12 +312,16 @@ void *handle_client_request(void *args) {
     } else if (codigo == 1) { 
         if (receiveNewFileFromClient(novo_socket, diretorio, &conflitOperation, all_rms, num_all_rms, current_leader_id, nome_cliente, IP_cliente) == 1)
             printf("Erro ao receber o arquivo\n");
+        
+            fflush(stdout);
     } else if (codigo == 2) { 
         if (removeFileInServer(novo_socket, diretorio, &conflitOperation, all_rms, num_all_rms, current_leader_id, nome_cliente, IP_cliente) == 1)
             printf("Erro ao remover o arquivo\n");
+         
     } else if (codigo == 3) {
         if (updateFileName(novo_socket, diretorio, &conflitOperation, all_rms, num_all_rms, current_leader_id, nome_cliente, IP_cliente) == 1)
             printf("Erro ao atualizar o nome do arquivo\n");
+            
     } else if (codigo == 4) { 
         if (sendNewFileToClient(novo_socket, diretorio, &conflitOperation, nome_cliente) == 1)
             printf("Erro ao atualizar o arquivo no cliente\n");
@@ -375,7 +396,7 @@ void *handle_replication_message(void *args) {
 
     char diretorio[1000] = {0};
     snprintf(diretorio, sizeof(diretorio), "%s/sync_dir_%s_server", getenv("HOME"), nome_cliente);
-
+    int jaTinhaDiretorio=1;
     pthread_mutex_lock(&insertDevice); 
     int ind_cliente = buscar_indice_cliente(nome_cliente);
     if (ind_cliente == -1) {
@@ -383,6 +404,7 @@ void *handle_replication_message(void *args) {
         ind_cliente = num_clientes - 1;
         DIR *dir = opendir(diretorio);
         if (dir == NULL) {
+            jaTinhaDiretorio=0;
             char mkdirCommand[1500];
             snprintf(mkdirCommand, sizeof(mkdirCommand), "mkdir -p %s", diretorio);
             if (system(mkdirCommand) != 0) {
@@ -410,6 +432,31 @@ void *handle_replication_message(void *args) {
         printf("Backup RM %d: Conexão inicial replicada para cliente %s\n", my_rm_id, nome_cliente);
         int ok = 0;
         send(novo_socket, &ok, sizeof(int), 0); 
+        DIR *dir;
+        struct dirent *entry;
+        dir = opendir(diretorio);
+        if(jaTinhaDiretorio){
+        
+        // Limpar o diretório do cliente
+        while ((entry = readdir(dir)) != NULL) {
+            if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
+                continue;
+            }
+
+            // Construir o caminho completo do arquivo
+            char caminho_completo[1500];
+            snprintf(caminho_completo, sizeof(caminho_completo), "%s/%s", diretorio, entry->d_name);
+
+            // Remover o arquivo/diretório
+            if (remove(caminho_completo) != 0) {
+                perror("Erro ao deletar arquivo/diretório");
+            }
+        }
+
+
+
+}
+        
     } else if (codigo == 1) { 
         if (receiveNewFileFromPrimary(novo_socket, diretorio, &conflitOperation) == 1)
             printf("Backup RM %d: Erro ao receber arquivo replicado\n", my_rm_id);
@@ -483,6 +530,7 @@ void *handle_incoming_connection(void *args) {
         } else {
             handle_election_message(novo_socket, payload);
         }
+        close(novo_socket);
     } else { 
         pthread_mutex_lock(&leader_mutex);
         int leader = current_leader_id;
@@ -651,7 +699,7 @@ int server_init(int *servidor_fd, struct sockaddr_in *endereco, int porta) {
 // Usado para a detecção de falhas do líder e para manter a coesão do cluster
 void* heartbeat_thread(void* arg) {
     while (1) {
-        usleep(100000);
+        usleep(250000);
         pthread_mutex_lock(&leader_mutex);      
         int leader = current_leader_id;
         pthread_mutex_unlock(&leader_mutex);   
@@ -690,6 +738,7 @@ void* heartbeat_thread(void* arg) {
 }
 
 int main(int argc, char *argv[]) {
+    signal(SIGPIPE, SIG_IGN);
     struct sockaddr_in client_address;
     socklen_t client_addr_len = sizeof(client_address);
 
